@@ -49,7 +49,8 @@
     {
       "provider": "github",
       "owner": "Blockchain-devs786",
-      "repo": "MR-B-Software"
+      "repo": "MR-B-Software",
+      "releaseType": "release"
     }
   ]
 }
