@@ -28,8 +28,8 @@ export function setupIpcHandlers() {
 
             const orders = await query(sql, params) as any[];
 
-            // Get all items and payments
-            const items = await query('SELECT * FROM order_items') as any[];
+            // Get all items and payments (join with items table to ensure item_name is always available)
+            const items = await query('SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id') as any[];
             const payments = await query('SELECT * FROM order_payments') as any[];
 
             // Group items and payments by order_id
@@ -80,8 +80,8 @@ export function setupIpcHandlers() {
 
             const order = orders[0];
 
-            // Fetch items
-            const items = await query('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+            // Fetch items (join with items table to ensure item_name is always available)
+            const items = await query('SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id WHERE oi.order_id = ?', [orderId]);
             order.items = items;
 
             // Fetch payments
@@ -461,7 +461,7 @@ export function setupIpcHandlers() {
 
     ipcMain.handle('get-order-items', async (_event, orderId) => {
         try {
-            const items = await query('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+            const items = await query('SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id WHERE oi.order_id = ?', [orderId]);
             return { success: true, data: items };
         } catch (error: any) {
             console.error('Error fetching order items:', error);

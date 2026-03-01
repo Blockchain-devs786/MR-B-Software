@@ -224,6 +224,21 @@ export async function initDatabase() {
       console.error('Failed to migrate settings value column', e);
     }
 
+    // Migration: fix order_items with missing item_name by looking up from items table
+    try {
+      const [result]: any = await connection.query(
+        `UPDATE order_items oi
+         INNER JOIN items i ON oi.item_id = i.id
+         SET oi.item_name = i.name
+         WHERE oi.item_name IS NULL OR oi.item_name = ''`
+      );
+      if (result && result.affectedRows > 0) {
+        console.log(`Fixed ${result.affectedRows} order_items with missing item_name`);
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+
     // Seed default waiters if table is empty
     const [waiters]: any = await connection.query('SELECT COUNT(*) as count FROM waiters');
     if (waiters[0].count === 0) {
