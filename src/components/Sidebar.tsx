@@ -61,7 +61,7 @@ const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
             {/* Footer */}
             {!collapsed && (
                 <div className="p-4 border-t border-gray-100 text-center text-xs text-gray-400">
-                    v1.1.4 — Auto-Update Test ✅
+                    v1.1.5
                 </div>
             )}
         </aside>
