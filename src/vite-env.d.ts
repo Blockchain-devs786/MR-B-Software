@@ -198,5 +198,6 @@ interface Window {
         onUpdateDownloadProgress: (callback: (progress: any) => void) => void;
         onUpdateDownloaded: (callback: (info: any) => void) => void;
         installUpdate: () => Promise<void>;
+        getVersion: () => Promise<string>;
     };
 }

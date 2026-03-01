@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { initDatabase } from './database'
@@ -72,6 +72,8 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   initDatabase();
   setupIpcHandlers();
+
+  ipcMain.handle('get-version', () => app.getVersion());
 
   // Create custom menu template (excluding Help)
   const template: any[] = [

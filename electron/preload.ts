@@ -93,6 +93,7 @@ const api = {
     ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
   },
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  getVersion: () => ipcRenderer.invoke('get-version'),
 }
 
 contextBridge.exposeInMainWorld('api', api)
