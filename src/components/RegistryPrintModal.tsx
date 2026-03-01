@@ -32,8 +32,9 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
             box-sizing: border-box;
         }
         body {
-            font-family: 'Courier New', monospace;
+            font-family: Arial, sans-serif;
             font-size: 12px;
+            color: black;
             width: 80mm;
             padding: 4mm;
         }
@@ -166,9 +167,9 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
             </thead>
             <tbody>
                 ${Object.entries(reportData.orderTypeSummary).map(([type, data]: [string, any]) => {
-                    const totalOrders = reportData.totalOrders;
-                    const percentage = totalOrders > 0 ? ((data.count / totalOrders) * 100).toFixed(1) : '0.0';
-                    return `
+            const totalOrders = reportData.totalOrders;
+            const percentage = totalOrders > 0 ? ((data.count / totalOrders) * 100).toFixed(1) : '0.0';
+            return `
                         <tr>
                             <td>${type}</td>
                             <td class="text-right">${data.count}</td>
@@ -176,7 +177,7 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
                             <td class="text-right">Rs.${data.amount.toFixed(0)} (${percentage}%)</td>
                         </tr>
                     `;
-                }).join('')}
+        }).join('')}
             </tbody>
         </table>
     </div>
@@ -263,11 +264,11 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
                     </button>
                 </div>
                 <div className="flex-1 overflow-auto p-4">
-                    <div ref={printRef} className="bg-white text-black font-mono text-xs" style={{ width: '80mm', padding: '4mm', fontFamily: 'monospace' }}>
+                    <div ref={printRef} className="bg-white text-black text-[12px]" style={{ width: '80mm', padding: '4mm', fontFamily: 'Arial, sans-serif' }}>
                         {/* Print preview content - same as print template */}
                         <div style={{ textAlign: 'center', fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>Mr B</div>
                         <div style={{ textAlign: 'center', fontSize: '10px', borderBottom: '1px dashed #999', paddingBottom: '8px', marginBottom: '8px' }}>REGISTRY SUMMARY REPORT</div>
-                        
+
                         {reportData.registry && (
                             <div style={{ borderBottom: '1px dashed #999', paddingBottom: '8px', marginBottom: '8px' }}>
                                 <div style={{ fontWeight: 'bold', marginTop: '8px', marginBottom: '4px' }}>Registry Time:</div>

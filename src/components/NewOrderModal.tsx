@@ -362,7 +362,7 @@ const NewOrderModal = ({ isOpen, onClose, onOrderCreated }: NewOrderModalProps) 
             <!DOCTYPE html>
             <html><head><title>Kitchen - Order ${d.orderId}</title>
             <style>
-                body{font-family:'Segoe UI',system-ui,sans-serif;padding:14px;font-size:13px;max-width:85mm;margin:0 auto;color:#1f2937}
+                body{font-family:Arial, sans-serif;padding:4mm;font-size:14px;max-width:80mm;margin:0 auto;color:black;}
                 .box{border:2px solid #ea580c;border-radius:8px;padding:12px;margin-bottom:10px;background:#fffbf7}
                 .header{text-align:center;font-weight:800;font-size:18px;margin-bottom:10px;padding-bottom:8px;border-bottom:2px dashed #ea580c;letter-spacing:0.5px}
                 .line{padding:3px 0;border-bottom:1px dotted #e5e7eb}
