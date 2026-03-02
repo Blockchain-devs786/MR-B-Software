@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Clock, Play, Square } from 'lucide-react';
 import { useToast } from './Toast';
 
-const RegistryManager = () => {
+const RegistryManager = ({ onRegistryChange }: { onRegistryChange?: () => void }) => {
     const [currentRegistry, setCurrentRegistry] = useState<any>(null);
     const [showStartModal, setShowStartModal] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
@@ -26,10 +26,10 @@ const RegistryManager = () => {
     }, []);
 
     const handleStartRegistry = async () => {
-        const cashAmount = openingCash === '' || openingCash === null || openingCash === undefined 
-            ? 0.00 
+        const cashAmount = openingCash === '' || openingCash === null || openingCash === undefined
+            ? 0.00
             : Number(openingCash);
-        
+
         if (isNaN(cashAmount) || cashAmount < 0) {
             showToast('Please enter a valid opening cash amount (0.00 or more)');
             return;
@@ -42,6 +42,7 @@ const RegistryManager = () => {
                 setOpeningCash('');
                 fetchCurrentRegistry();
                 showToast('Registry started successfully!', 'success');
+                onRegistryChange?.();
             } else {
                 showToast(res.error || 'Failed to start registry');
             }
@@ -55,6 +56,7 @@ const RegistryManager = () => {
                 setShowCloseModal(false);
                 setCurrentRegistry(null);
                 showToast('Registry closed successfully! Closing balance was calculated automatically.', 'success');
+                onRegistryChange?.();
             } else {
                 showToast(res.error || 'Failed to close registry');
             }

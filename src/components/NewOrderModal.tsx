@@ -378,14 +378,10 @@ const NewOrderModal = ({ isOpen, onClose, onOrderCreated }: NewOrderModalProps) 
             </style>
             </head><body>
             <div class="box">
-                <div class="header">🆕 NEW ORDER</div>
-                <div class="line">📦 <span class="label">Order type</span><br><span class="value">${escape(d.orderType)}</span></div>
-                <div class="line">🔖 <span class="label">Ref of order no</span><br><span class="value">(REF# ORD-${d.orderId})</span></div>
-                <div class="line">🎫 <span class="label">TOKEN #</span><br><span class="value">${d.orderId}</span></div>
-                <div class="line">👤 <span class="label">Customer</span><br><span class="value">${escape(d.customer) || '-'}</span></div>
-                <div class="line">👨‍💼 <span class="label">Order taker</span><br><span class="value">${escape(d.orderTaker) || '-'}</span></div>
-                <div class="line">⏰ <span class="label">Order time</span><br><span class="value">${fmt(d.orderTime)}</span></div>
-                <div class="line">🖨️ <span class="label">Print time</span><br><span class="value">${fmt(printTime)}</span></div>
+                <div class="header">NEW ORDER</div>
+                <div class="line"><span class="label">TOKEN #</span><br><span class="value">${d.orderId}</span></div>
+                <div class="line"><span class="label">Order time</span><br><span class="value">${fmt(d.orderTime)}</span></div>
+                <div class="line"><span class="label">Print time</span><br><span class="value">${fmt(printTime)}</span></div>
             </div>
             <div class="section-title">🍳 Kitchen</div>
             <table><thead><tr><th style="width:70%">DESCRIPTION</th><th style="text-align:right;width:30%">QTY</th></tr></thead><tbody>${rows}</tbody></table>
@@ -898,14 +894,11 @@ const NewOrderModal = ({ isOpen, onClose, onOrderCreated }: NewOrderModalProps) 
                         </div>
                         <div className="p-4 max-h-72 overflow-auto bg-gray-50/80">
                             <div className="rounded-xl border-2 border-orange-200 bg-white p-3 mb-3 shadow-sm">
-                                <div className="text-center font-bold text-gray-900 mb-3 pb-2 border-b-2 border-dashed border-orange-200">🆕 NEW ORDER</div>
+                                <div className="text-center font-bold text-gray-900 mb-3 pb-2 border-b-2 border-dashed border-orange-200">NEW ORDER</div>
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">📦 Order type</span><span className="font-medium text-gray-800">{kitchenReceiptData.orderType}</span></div>
-                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">🔖 Ref no</span><span className="font-medium">ORD-{kitchenReceiptData.orderId}</span></div>
-                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">🎫 TOKEN #</span><span className="font-bold text-orange-600">{kitchenReceiptData.orderId}</span></div>
-                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">👤 Customer</span><span className="font-medium">{kitchenReceiptData.customer || '-'}</span></div>
-                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">👨‍💼 Order taker</span><span className="font-medium">{kitchenReceiptData.orderTaker || '-'}</span></div>
-                                    <div className="flex justify-between py-1.5"><span className="text-gray-500">⏰ Order time</span><span className="font-medium text-gray-700">{kitchenReceiptData.orderTime.toLocaleString()}</span></div>
+                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">TOKEN #</span><span className="font-bold text-orange-600">{kitchenReceiptData.orderId}</span></div>
+                                    <div className="flex justify-between py-1.5 border-b border-dotted border-gray-200"><span className="text-gray-500">Order time</span><span className="font-medium text-gray-700">{kitchenReceiptData.orderTime.toLocaleString()}</span></div>
+                                    <div className="flex justify-between py-1.5"><span className="text-gray-500">Print time</span><span className="font-medium text-gray-700">{new Date().toLocaleString()}</span></div>
                                 </div>
                             </div>
                             <div className="rounded-lg bg-amber-100 border border-amber-300 px-3 py-2 font-bold text-amber-900 mb-2 flex items-center gap-2">🍳 Kitchen</div>

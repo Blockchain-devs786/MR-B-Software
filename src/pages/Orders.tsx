@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Clock, User, MapPin, Phone, Utensils, ShoppingBag, Truck, CreditCard, Eye, X, RotateCcw, Printer, Search, Check } from 'lucide-react';
+import { Plus, Clock, User, MapPin, Phone, Utensils, ShoppingBag, Truck, CreditCard, Eye, EyeOff, X, RotateCcw, Printer, Search, Check } from 'lucide-react';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import WhatsAppButton from '../components/WhatsAppButton';
 import OrderSidePanel from '../components/OrderSidePanel'; // Import Side Panel
@@ -27,6 +27,7 @@ const Orders = () => {
     const [currentRegistry, setCurrentRegistry] = useState<{ id: number } | null>(null);
     const [activeTab, setActiveTab] = useState<TabType>('all');
     const [registrySale, setRegistrySale] = useState<number | null>(null);
+    const [showSale, setShowSale] = useState(true);
     // Side Panel States
     const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
     const [cart, setCart] = useState<any[]>([]);
@@ -410,7 +411,18 @@ const Orders = () => {
                             {currentRegistry && registrySale !== null && (
                                 <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded-xl flex items-center gap-2 border border-orange-200 whitespace-nowrap">
                                     <span className="text-sm font-medium">Today's Registry Sale:</span>
-                                    <span className="font-bold text-lg">Rs. {registrySale.toFixed(0)}</span>
+                                    {showSale ? (
+                                        <span className="font-bold text-lg">Rs. {registrySale.toFixed(0)}</span>
+                                    ) : (
+                                        <span className="font-bold text-lg">Rs. ****</span>
+                                    )}
+                                    <button
+                                        onClick={() => setShowSale(!showSale)}
+                                        className="p-1 hover:bg-orange-200 rounded-lg transition-colors"
+                                        title={showSale ? 'Hide sale amount' : 'Show sale amount'}
+                                    >
+                                        {showSale ? <Eye size={16} /> : <EyeOff size={16} />}
+                                    </button>
                                 </div>
                             )}
                         </div>
