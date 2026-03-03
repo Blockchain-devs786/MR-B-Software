@@ -77459,7 +77459,7 @@ function lT() {
       for (const p of c) {
         const P = p.unit_price * p.quantity - (p.discount || 0);
         await Y(
-          "INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, item_discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           [t, p.id, p.name, p.quantity, p.unit_price, p.discount || 0, P, p.note || null]
         );
       }

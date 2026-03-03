@@ -366,7 +366,7 @@ export function setupIpcHandlers() {
             for (const item of items) {
                 const lineTotal = (item.unit_price * item.quantity) - (item.discount || 0);
                 await query(
-                    'INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, item_discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    'INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     [orderId, item.id, item.name, item.quantity, item.unit_price, item.discount || 0, lineTotal, item.note || null]
                 );
             }
