@@ -5,9 +5,11 @@ import { sendLicenseRequest, checkLicenseReply } from './emailService';
 
 export function setupIpcHandlers() {
     // ==================== ORDERS ====================
-    ipcMain.handle('get-orders', async (_event, filters?: { registryId?: number | null }) => {
+    ipcMain.handle('get-orders', async (_event, filters?: { registryId?: number | null, startDate?: string, endDate?: string }) => {
         try {
             const registryId = filters?.registryId;
+            const startDate = filters?.startDate;
+            const endDate = filters?.endDate;
             // When explicitly null or a number: filter by registry. If undefined, return all (e.g. for reports/other).
             let sql = `
         SELECT o.*, 
@@ -20,10 +22,22 @@ export function setupIpcHandlers() {
         LEFT JOIN riders r ON o.rider_id = r.id
             `;
             const params: any[] = [];
+            let whereClauses: string[] = [];
+
             if (registryId !== undefined && registryId !== null) {
-                sql += ' WHERE o.registry_id = ?';
+                whereClauses.push('o.registry_id = ?');
                 params.push(registryId);
             }
+
+            if (startDate && endDate) {
+                whereClauses.push('DATE(o.created_at) >= ? AND DATE(o.created_at) <= ?');
+                params.push(startDate, endDate);
+            }
+
+            if (whereClauses.length > 0) {
+                sql += ' WHERE ' + whereClauses.join(' AND ');
+            }
+
             sql += ' ORDER BY o.created_at DESC';
 
             const orders = await query(sql, params) as any[];

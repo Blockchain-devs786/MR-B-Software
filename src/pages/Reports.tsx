@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { BarChart3, Calendar, Printer, Receipt } from 'lucide-react';
+import { BarChart3, Calendar, Printer, Receipt, ShoppingBag, X } from 'lucide-react';
 import RegistryManager from '../components/RegistryManager';
 import RegistryPrintModal from '../components/RegistryPrintModal';
 import ExpenseReportPrintModal from '../components/ExpenseReportPrintModal';
@@ -16,12 +16,26 @@ const Reports = () => {
     const [reportData, setReportData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
-    const [activeTab, setActiveTab] = useState<'registry' | 'expense'>('registry');
+    const [activeTab, setActiveTab] = useState<'registry' | 'expense' | 'previous_orders'>('registry');
     const [allExpenses, setAllExpenses] = useState<any[]>([]);
     const [showExpensePrintModal, setShowExpensePrintModal] = useState(false);
     const [hasOpenRegistry, setHasOpenRegistry] = useState(false);
     const { showToast } = useToast();
     const prevRegistryIdsRef = useRef<string>('');
+
+    // Previous Orders State
+    const [previousOrders, setPreviousOrders] = useState<any[]>([]);
+    const [loadingPreviousOrders, setLoadingPreviousOrders] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<any>(null);
+
+    const statusColors: Record<string, string> = {
+        Pending: 'bg-orange-100 text-orange-700 border-orange-200',
+        Preparing: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        Ready: 'bg-green-100 text-green-700 border-green-200',
+        Completed: 'bg-blue-100 text-blue-700 border-blue-200',
+        Refunded: 'bg-red-100 text-red-700 border-red-200',
+        Cancelled: 'bg-gray-200 text-gray-600 border-gray-300',
+    };
 
     useEffect(() => {
         fetchAvailableRegistries();
@@ -32,9 +46,12 @@ const Reports = () => {
         if (!hasOpenRegistry) return;
         const interval = setInterval(() => {
             fetchAvailableRegistries(true);
+            if (activeTab === 'previous_orders') {
+                fetchPreviousOrders(true);
+            }
         }, 5000);
         return () => clearInterval(interval);
-    }, [hasOpenRegistry, fromDate, toDate]);
+    }, [hasOpenRegistry, fromDate, toDate, activeTab]);
 
     useEffect(() => {
         if (!loading) {
@@ -179,6 +196,31 @@ const Reports = () => {
             if (!isPolling) setLoading(false);
         }
     };
+
+    const fetchPreviousOrders = async (isPolling = false) => {
+        if (!window.api) return;
+        if (!isPolling) setLoadingPreviousOrders(true);
+        try {
+            const registryFilter = selectedRegistryId === 'all' ? undefined : Number(selectedRegistryId);
+            const res = await window.api.getOrders({ registryId: registryFilter, startDate: fromDate, endDate: toDate });
+            if (res.success) {
+                setPreviousOrders(res.data || []);
+            } else {
+                if (!isPolling) showToast('Failed to load previous orders');
+            }
+        } catch (error) {
+            console.error('Error fetching previous orders:', error);
+            if (!isPolling) showToast('Failed to load previous orders');
+        } finally {
+            if (!isPolling) setLoadingPreviousOrders(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'previous_orders') {
+            fetchPreviousOrders();
+        }
+    }, [activeTab, fromDate, toDate, selectedRegistryId]);
 
     const processReportDataInternal = (orders: any[], expenses: any[], refunds: any[], _paymentAccounts: any[], startDate: string, endDate: string) => {
         // Sale Summary by Payment Type
@@ -439,6 +481,16 @@ const Reports = () => {
                 >
                     <Receipt size={18} />
                     Expense Reports
+                </button>
+                <button
+                    onClick={() => setActiveTab('previous_orders')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${activeTab === 'previous_orders'
+                        ? 'bg-orange-500 text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                >
+                    <ShoppingBag size={18} />
+                    Previous Orders
                 </button>
             </div>
 
@@ -848,6 +900,139 @@ const Reports = () => {
                     )}
                 </>
             )}
+
+            {/* ==================== PREVIOUS ORDERS TAB ==================== */}
+            {activeTab === 'previous_orders' && (
+                <>
+                    {loadingPreviousOrders ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
+                            <p className="text-gray-500">Loading orders...</p>
+                        </div>
+                    ) : previousOrders.length > 0 ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                            <h3 className="text-xl font-bold mb-4">Previous Orders</h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-50 border-b border-gray-100">
+                                        <tr>
+                                            <th className="px-4 py-3 font-medium text-gray-500 w-24">Order ID</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Date/Time</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Type</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Status</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {previousOrders.map((order: any, idx: number) => {
+                                            const displayNum = previousOrders.length - idx;
+                                            return (
+                                                <tr
+                                                    key={order.id}
+                                                    onClick={() => setSelectedOrder(order)}
+                                                    className="border-b border-gray-100 last:border-0 hover:bg-orange-50 cursor-pointer transition-colors"
+                                                >
+                                                    <td className="px-4 py-3 font-bold text-gray-900">#{String(displayNum).padStart(3, '0')}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{new Date(order.created_at).toLocaleString('en-PK')}</td>
+                                                    <td className="px-4 py-3 text-gray-900">{order.type}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${statusColors[order.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                            {order.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-gray-900">Rs. {Number(order.total).toFixed(0)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                            <ShoppingBag size={48} className="text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500">No orders found for the selected date range.</p>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* Order Detail Modal */}
+            {selectedOrder && (() => {
+                const detailDisplayNum = previousOrders.findIndex((o: any) => o.id === selectedOrder.id);
+                const showDetailNum = detailDisplayNum !== -1 ? previousOrders.length - detailDisplayNum : selectedOrder.id;
+                return (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                <h2 className="text-xl font-bold">Order #{String(showDetailNum).padStart(3, '0')}</h2>
+                                <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="p-4 space-y-4">
+                                <div className="flex gap-2">
+                                    <span className={`px-2 py-1 rounded-md text-xs font-bold border ${statusColors[selectedOrder.status] || 'bg-gray-100 text-gray-600'}`}>
+                                        {selectedOrder.status}
+                                    </span>
+                                    <span className="px-2 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-600">
+                                        {selectedOrder.type}
+                                    </span>
+                                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${selectedOrder.payment_status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {selectedOrder.payment_status === 'Paid' ? 'Paid' : 'Unpaid'}
+                                    </span>
+                                </div>
+
+                                <div className="border border-gray-100 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th className="p-2 font-medium text-gray-500">Item</th>
+                                                <th className="p-2 text-center font-medium text-gray-500">Qty</th>
+                                                <th className="p-2 text-right font-medium text-gray-500">Price</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(selectedOrder.items || []).map((item: any) => (
+                                                <tr key={item.id} className="border-t border-gray-50">
+                                                    <td className="p-2 text-gray-900">{item.item_name}</td>
+                                                    <td className="p-2 text-center text-gray-600">{item.quantity}</td>
+                                                    <td className="p-2 text-right text-gray-900">Rs. {Number(item.line_total).toFixed(0)}</td>
+                                                </tr>
+                                            ))}
+                                            {(!selectedOrder.items || selectedOrder.items.length === 0) && (
+                                                <tr>
+                                                    <td colSpan={3} className="p-4 text-center text-gray-500">No items found</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="border-t border-gray-100 pt-3 space-y-1">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Subtotal</span>
+                                        <span>Rs. {Number(selectedOrder.subtotal).toFixed(0)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-red-600">
+                                        <span>Discount</span>
+                                        <span>- Rs. {Number(selectedOrder.discount).toFixed(0)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-lg font-bold">
+                                        <span>Total</span>
+                                        <span>Rs. {Number(selectedOrder.total).toFixed(0)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 border-t border-gray-100 flex gap-3">
+                                <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Print Modal - Registry */}
             <RegistryPrintModal
