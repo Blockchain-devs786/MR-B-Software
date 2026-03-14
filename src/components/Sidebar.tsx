@@ -5,10 +5,11 @@ import { ShoppingBag, Package, Bike, Receipt, BarChart3, Folder, CreditCard, Men
 const navItems = [
     { to: '/', icon: ShoppingBag, label: 'Orders' },
     { to: '/categories', icon: Folder, label: 'Categories' },
-    { to: '/items', icon: Package, label: 'Items' },
+    { to: '/items', icon: Package, label: 'Items & Deals' },
     { to: '/payment-methods', icon: CreditCard, label: 'Payment Methods' },
     { to: '/riders', icon: Bike, label: 'Riders' },
     { to: '/expenses', icon: Receipt, label: 'Expenses' },
+    { to: '/other-sales', icon: BarChart3, label: 'Other Sales' },
     { to: '/reports', icon: BarChart3, label: 'Reports' },
     { to: '/settings', icon: SettingsIcon, label: 'Settings' },
 ];

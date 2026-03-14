@@ -30,6 +30,13 @@ const api = {
   updateItem: (item: any) => ipcRenderer.invoke('update-item', item),
   deleteItem: (id: number) => ipcRenderer.invoke('delete-item', id),
 
+  // Deals
+  getDeals: () => ipcRenderer.invoke('get-deals'),
+  createDeal: (dealData: any) => ipcRenderer.invoke('create-deal', dealData),
+  updateDeal: (dealId: number, dealData: any) => ipcRenderer.invoke('update-deal', { dealId, dealData }),
+  deleteDeal: (id: number) => ipcRenderer.invoke('delete-deal', id),
+  toggleDealStatus: (id: number, isActive: boolean) => ipcRenderer.invoke('toggle-deal-status', { id, isActive }),
+
   // Riders
   getRiders: () => ipcRenderer.invoke('get-riders'),
   getAvailableRiders: () => ipcRenderer.invoke('get-available-riders'),
@@ -52,6 +59,16 @@ const api = {
   // Refunds
   getRefunds: () => ipcRenderer.invoke('get-refunds'),
   addRefund: (refund: any) => ipcRenderer.invoke('add-refund', refund),
+
+  // Other Sales Categories
+  getOtherSaleCategories: () => ipcRenderer.invoke('get-other-sale-categories'),
+  addOtherSaleCategory: (category: any) => ipcRenderer.invoke('add-other-sale-category', category),
+  updateOtherSaleCategory: (category: any) => ipcRenderer.invoke('update-other-sale-category', category),
+  deleteOtherSaleCategory: (id: number) => ipcRenderer.invoke('delete-other-sale-category', id),
+
+  // Other Sales
+  getOtherSales: (filters?: { registryId?: number | null }) => ipcRenderer.invoke('get-other-sales', filters),
+  addOtherSale: (sale: any) => ipcRenderer.invoke('add-other-sale', sale),
 
   // Settings
   getSetting: (key: string) => ipcRenderer.invoke('get-setting', key),

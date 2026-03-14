@@ -61,7 +61,7 @@ const WhatsAppButton = ({ order }: WhatsAppButtonProps) => {
         console.log('Validated number:', validNum);
 
         if (!validNum) {
-            showToast('Invalid number format. Use 0300... or +92300...');
+            showToast('Invalid number format. Use 0300... or +92300...', 'error');
             return;
         }
 
@@ -77,11 +77,11 @@ const WhatsAppButton = ({ order }: WhatsAppButtonProps) => {
                     setIsEditingNumber(false);
                     openWhatsApp();
                 } else {
-                    showToast('Failed to save number: ' + res.error);
+                    showToast('Failed to save number: ' + res.error, 'error');
                 }
             } catch (err) {
                 console.error('Error in saveSetting:', err);
-                showToast('Error saving settings');
+                showToast('Error saving settings', 'error');
             }
         } else {
             console.error('window.api is not defined');

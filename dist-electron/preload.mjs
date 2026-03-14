@@ -25,6 +25,12 @@ const api = {
   addItem: (item) => electron.ipcRenderer.invoke("add-item", item),
   updateItem: (item) => electron.ipcRenderer.invoke("update-item", item),
   deleteItem: (id) => electron.ipcRenderer.invoke("delete-item", id),
+  // Deals
+  getDeals: () => electron.ipcRenderer.invoke("get-deals"),
+  createDeal: (dealData) => electron.ipcRenderer.invoke("create-deal", dealData),
+  updateDeal: (dealId, dealData) => electron.ipcRenderer.invoke("update-deal", { dealId, dealData }),
+  deleteDeal: (id) => electron.ipcRenderer.invoke("delete-deal", id),
+  toggleDealStatus: (id, isActive) => electron.ipcRenderer.invoke("toggle-deal-status", { id, isActive }),
   // Riders
   getRiders: () => electron.ipcRenderer.invoke("get-riders"),
   getAvailableRiders: () => electron.ipcRenderer.invoke("get-available-riders"),
@@ -44,6 +50,14 @@ const api = {
   // Refunds
   getRefunds: () => electron.ipcRenderer.invoke("get-refunds"),
   addRefund: (refund) => electron.ipcRenderer.invoke("add-refund", refund),
+  // Other Sales Categories
+  getOtherSaleCategories: () => electron.ipcRenderer.invoke("get-other-sale-categories"),
+  addOtherSaleCategory: (category) => electron.ipcRenderer.invoke("add-other-sale-category", category),
+  updateOtherSaleCategory: (category) => electron.ipcRenderer.invoke("update-other-sale-category", category),
+  deleteOtherSaleCategory: (id) => electron.ipcRenderer.invoke("delete-other-sale-category", id),
+  // Other Sales
+  getOtherSales: (filters) => electron.ipcRenderer.invoke("get-other-sales", filters),
+  addOtherSale: (sale) => electron.ipcRenderer.invoke("add-other-sale", sale),
   // Settings
   getSetting: (key) => electron.ipcRenderer.invoke("get-setting", key),
   saveSetting: (key, value) => electron.ipcRenderer.invoke("save-setting", { key, value }),

@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Clock, User, MapPin, Phone, Utensils, ShoppingBag, Truck, CreditCard, Eye, EyeOff, X, RotateCcw, Printer, Search, Check } from 'lucide-react';
+import { Plus, Clock, User, MapPin, Phone, Utensils, ShoppingBag, Truck, CreditCard, Eye, EyeOff, X, RotateCcw, Printer, Search } from 'lucide-react';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import WhatsAppButton from '../components/WhatsAppButton';
 import OrderSidePanel from '../components/OrderSidePanel'; // Import Side Panel
+import OrderTimeElapsed from '../components/OrderTimeElapsed';
+import DealSelectionModal from '../components/DealSelectionModal';
+import PaymentModal from '../components/PaymentModal';
 import { useToast } from '../components/Toast';
 
 type TabType = 'all' | 'pending' | 'preparing' | 'ready' | 'completed' | 'pending-payment';
@@ -37,6 +40,11 @@ const Orders = () => {
     const [highlightIndex, setHighlightIndex] = useState(-1);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [allItems, setAllItems] = useState<any[]>([]); // Store all items for search
+    const [allDeals, setAllDeals] = useState<any[]>([]); // Store all active deals
+    const [selectedDealForModal, setSelectedDealForModal] = useState<any | null>(null);
+
+    const [filterFromTime, setFilterFromTime] = useState('');
+    const [filterToTime, setFilterToTime] = useState('');
 
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [showRefundModal, setShowRefundModal] = useState(false);
@@ -49,13 +57,12 @@ const Orders = () => {
     const [printOrder, setPrintOrder] = useState<any>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrderId, setPaymentOrderId] = useState<number | null>(null);
-    const [paymentAccounts, setPaymentAccounts] = useState<any[]>([]);
     const [orderToEdit, setOrderToEdit] = useState<any>(null);
     const { showToast } = useToast();
 
     const openPanelToChangeOrder = (order: any) => {
         if (!currentRegistry) {
-            showToast('Start a registry to change orders.');
+            showToast('Start a registry to change orders.', 'error');
             return;
         }
         const cartFromOrder = (order.items || []).map((i: any) => ({
@@ -91,33 +98,31 @@ const Orders = () => {
         const res = await window.api.getOrders({ registryId: registry.id });
         if (res.success) setOrders(res.data ?? []);
 
-        // Also fetch registry summary to show today's sale
+        // Also fetch registry summary to show collectable amount
         const summaryRes = await window.api.getRegistrySummary(registry.id);
         if (summaryRes.success && summaryRes.data) {
-            const { orders: sumOrders, refunds: sumRefunds } = summaryRes.data;
-            let totalSales = 0, totalDiscount = 0, totalService = 0, totalGST = 0;
-            const tRefunds = (sumRefunds || []).reduce((acc: number, r: any) => acc + Number(r.amount || 0), 0);
+            const { orders: sumOrders } = summaryRes.data;
+            let collectableAmount = 0;
 
             (sumOrders || []).forEach((o: any) => {
-                if (o.status !== 'Cancelled') {
-                    totalSales += Number(o.total || 0);
-                    totalDiscount += Number(o.discount || 0);
-                    totalService += Number(o.service_charges || 0);
-                    totalGST += Number(o.gst || 0);
+                if (o.status !== 'Cancelled' && o.payment_status !== 'Paid') {
+                    collectableAmount += Number(o.total || 0);
                 }
             });
-            const grossSale = totalSales - totalDiscount + totalService + totalGST - tRefunds;
-            setRegistrySale(grossSale);
+            setRegistrySale(collectableAmount);
         } else {
             setRegistrySale(null);
         }
     };
 
-    // Load items for search
+    // Load items and deals for search
     useEffect(() => {
         if (window.api) {
             window.api.getItems().then(res => {
                 if (res.success) setAllItems(res.data);
+            });
+            window.api.getDeals().then(res => {
+                if (res.success) setAllDeals(res.data.filter((d: any) => d.is_active));
             });
         }
     }, []);
@@ -132,15 +137,8 @@ const Orders = () => {
         // ... (Payment modal logic remains same or similar)
         if (showPaymentModal && window.api) {
             document.body.style.overflow = 'hidden';
-            window.api.getAllPaymentAccounts().then(res => {
-                if (res.success) setPaymentAccounts(res.data || []);
-            }).catch(err => {
-                console.error('Error fetching payment accounts:', err);
-                setPaymentAccounts([]);
-            });
         } else if (!showPaymentModal) {
             document.body.style.overflow = '';
-            setPaymentAccounts([]);
         }
         return () => { document.body.style.overflow = ''; };
     }, [showPaymentModal]);
@@ -189,10 +187,18 @@ const Orders = () => {
         }
 
         const query = searchQuery.toLowerCase();
-        const results = allItems.filter(item =>
+        
+        const itemResults = allItems.filter(item =>
             item.name.toLowerCase().includes(query) ||
             String(item.id).includes(query)
-        ).slice(0, 10);
+        ).map(i => ({ ...i, isDeal: false }));
+
+        const dealResults = allDeals.filter(deal =>
+            deal.name.toLowerCase().includes(query) ||
+            String(deal.id).includes(query)
+        ).map(d => ({ ...d, isDeal: true }));
+
+        const results = [...dealResults, ...itemResults].slice(0, 10);
 
         setSearchResults(results);
         setIsSearchActive(true);
@@ -221,6 +227,13 @@ const Orders = () => {
     };
 
     const addItemToCart = (item: any) => {
+        if (item.isDeal) {
+            setSelectedDealForModal(item);
+            setSearchQuery('');
+            setIsSearchActive(false);
+            return;
+        }
+
         setIsSidePanelOpen(true);
         setCart(prev => {
             const existing = prev.find(c => c.id === item.id);
@@ -229,6 +242,12 @@ const Orders = () => {
             }
             return [...prev, { id: item.id, name: item.name, unit_price: Number(item.price), quantity: 1, discount: 0, note: '' }];
         });
+    };
+
+    const addDealToCart = (dealCartItem: any) => {
+        setIsSidePanelOpen(true);
+        setCart(prev => [...prev, dealCartItem]);
+        setSelectedDealForModal(null);
     };
 
     // ... (Refund & Payment functions remain same, omitted for brevity but logic should persist if not replacing)
@@ -243,7 +262,7 @@ const Orders = () => {
     const submitRefund = async () => {
         if (!selectedOrder || !window.api) return;
         if (!refundReason.trim()) {
-            showToast('Please enter a reason for the refund');
+            showToast('Please enter a reason for the refund', 'error');
             return;
         }
         if (refundAmount <= 0) {
@@ -261,7 +280,7 @@ const Orders = () => {
             fetchOrders();
             showToast('Refund processed successfully!', 'success');
         } else {
-            showToast('Failed to process refund: ' + res.error);
+            showToast('Failed to process refund: ' + res.error, 'error');
         }
     };
 
@@ -275,7 +294,7 @@ const Orders = () => {
             fetchOrders();
             showToast('Order cancelled');
         } else {
-            showToast('Failed to cancel order: ' + res.error);
+            showToast('Failed to cancel order: ' + res.error, 'error');
         }
     };
 
@@ -286,105 +305,78 @@ const Orders = () => {
         }
     };
 
-    type PaymentReceivingFrom = 'Cash' | 'Credit' | 'Bank Transfer' | 'Card' | 'Other';
-    const paymentOptions: PaymentReceivingFrom[] = ['Cash', 'Bank Transfer', 'Credit', 'Card', 'Other'];
-
-    interface SplitPayment {
-        type: PaymentReceivingFrom;
-        amount: string; // Keep as string for input flexibility
-        account_id: number | null;
-    }
-
-    const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([]);
-
     const collectPayment = (orderId: number) => {
         setPaymentOrderId(orderId);
-        setSplitPayments([{ type: 'Cash', amount: '', account_id: null }]);
         setShowPaymentModal(true);
     };
 
-    const confirmPayment = async () => {
-        if (!paymentOrderId || !window.api) {
-            showToast('Invalid order or API not available');
-            return;
+    const confirmPayment = async (orderId: number, paymentStatus: string, splitPaymentsInput: any[]) => {
+        if (!window.api) return;
+        
+        // Build legacy payment string from first non-cash payment to preserve behavior
+        let paymentMethodStr = 'IN DRAW';
+        const firstAccountPayment = splitPaymentsInput.find(p => p.account_id);
+        
+        // Fetch accounts here again or pass from the modal if need strings?
+        // Wait, update-payment-status takes the array now, so the backend can manage or the string can be generic.
+        if (firstAccountPayment) {
+             paymentMethodStr = 'Split/Bank';
         }
 
-        const order = orders.find(o => o.id === paymentOrderId);
-        if (!order) return;
-        const totalAmount = Number(order.total);
-
-        const validPayments = splitPayments.filter(p => Number(p.amount) > 0);
-
-        if (validPayments.length === 0) {
-            showToast('Please enter at least one payment amount');
-            return;
-        }
-
-        let currentTotal = 0;
-        const finalPayments: any[] = [];
-
-        for (const p of validPayments) {
-            if (p.type !== 'Cash' && p.type !== 'Other' && !p.account_id) {
-                showToast(`Please select a payment account for ${p.type}`);
-                return;
+        const res = await window.api.updatePaymentStatus(
+            orderId,
+            paymentStatus,
+            paymentMethodStr,
+            splitPaymentsInput.length === 1 ? splitPaymentsInput[0].type : 'Split',
+            splitPaymentsInput
+        );
+        if (res.success) {
+            const ord = orders.find(o => o.id === orderId);
+            if (ord && ord.status !== 'Completed' && ord.status !== 'Refunded' && ord.status !== 'Cancelled') {
+                await window.api.updateOrderStatus(orderId, 'Completed');
             }
-            const amount = Number(p.amount);
-            currentTotal += amount;
-            finalPayments.push({
-                type: p.type,
-                account_id: p.account_id,
-                amount: amount
-            });
-        }
-
-        if (currentTotal < totalAmount) {
-            showToast(`Total received (Rs. ${currentTotal}) is less than order total (Rs. ${totalAmount})`);
-            return;
-        }
-
-        try {
-            // Build legacy payment method string from the first non-cash payment to preserve legacy behaviour somewhat
-            const firstAccountPayment = finalPayments.find(p => p.account_id);
-            let paymentMethodStr = '';
-
-            if (firstAccountPayment) {
-                const account = paymentAccounts.find(acc => acc.id === firstAccountPayment.account_id);
-                if (account) {
-                    paymentMethodStr = `${account.payment_method_name} - ${account.account_number}${account.account_label ? ` (${account.account_label})` : ''}`;
-                }
-            } else {
-                // If no account payment, it's Cash — use 'IN DRAW'
-                paymentMethodStr = 'IN DRAW';
-            }
-
-            // Type represents dominant or primary type
-            const paymentType = finalPayments[0]?.type || 'Cash';
-
-            const res = await window.api.updatePaymentStatus(paymentOrderId, 'Paid', paymentMethodStr, paymentType, finalPayments);
-            if (res.success) {
-                setShowPaymentModal(false);
-                setPaymentOrderId(null);
-                setSplitPayments([]);
-                fetchOrders();
-                showToast('Payment collected successfully!', 'success');
-            } else {
-                showToast('Failed to collect payment: ' + (res.error || 'Unknown error'));
-            }
-        } catch (error: any) {
-            console.error('Error collecting payment:', error);
-            showToast('Error collecting payment: ' + (error.message || 'Unknown error'));
+            showToast('Payment collected successfully');
+            setShowPaymentModal(false);
+            setPaymentOrderId(null);
+            fetchOrders();
+        } else {
+            showToast(res.error || 'Failed to collect payment', 'error');
         }
     };
 
     const filteredOrders = orders.filter(order => {
+        let tabMatch = false;
         switch (activeTab) {
-            case 'pending': return order.status === 'Pending';
-            case 'preparing': return order.status === 'Preparing';
-            case 'ready': return order.status === 'Ready';
-            case 'completed': return order.status === 'Completed' && order.payment_status === 'Paid';
-            case 'pending-payment': return order.status === 'Completed' && order.payment_status === 'Pending';
-            default: return true;
+            case 'pending': tabMatch = order.status === 'Pending'; break;
+            case 'preparing': tabMatch = order.status === 'Preparing'; break;
+            case 'ready': tabMatch = order.status === 'Ready'; break;
+            case 'completed': tabMatch = order.status === 'Completed' && order.payment_status === 'Paid'; break;
+            case 'pending-payment': tabMatch = order.status === 'Completed' && order.payment_status === 'Pending'; break;
+            default: tabMatch = true; break;
         }
+
+        if (!tabMatch) return false;
+
+        if (filterFromTime || filterToTime) {
+            const orderTime = new Date(order.created_at);
+            const orderHours = orderTime.getHours();
+            const orderMinutes = orderTime.getMinutes();
+            const orderTotalMinutes = orderHours * 60 + orderMinutes;
+
+            if (filterFromTime) {
+                const [fromH, fromM] = filterFromTime.split(':').map(Number);
+                const fromTotal = fromH * 60 + fromM;
+                if (orderTotalMinutes < fromTotal) return false;
+            }
+
+            if (filterToTime) {
+                const [toH, toM] = filterToTime.split(':').map(Number);
+                const toTotal = toH * 60 + toM;
+                if (orderTotalMinutes > toTotal) return false;
+            }
+        }
+
+        return true;
     });
 
     const tabs: { key: TabType; label: string; count: number }[] = [
@@ -410,7 +402,7 @@ const Orders = () => {
                             </div>
                             {currentRegistry && registrySale !== null && (
                                 <div className="bg-orange-100 text-orange-800 px-4 py-2 rounded-xl flex items-center gap-2 border border-orange-200 whitespace-nowrap">
-                                    <span className="text-sm font-medium">Today's Registry Sale:</span>
+                                    <span className="text-sm font-medium">Collectable Amount:</span>
                                     {showSale ? (
                                         <span className="font-bold text-lg">Rs. {registrySale.toFixed(0)}</span>
                                     ) : (
@@ -448,7 +440,9 @@ const Orders = () => {
                                                 className={`p-3 flex justify-between items-center cursor-pointer ${idx === highlightIndex ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
                                                 onClick={() => { addItemToCart(item); setSearchQuery(''); setIsSearchActive(false); }}
                                             >
-                                                <span className="font-medium text-gray-800">#{item.id} - {item.name}</span>
+                                                <span className="font-medium text-gray-800">
+                                                    {item.isDeal ? `🏷️ Combo: ${item.name}` : `#${item.id} - ${item.name}`}
+                                                </span>
                                                 <span className="font-bold text-orange-600">Rs. {Number(item.price).toFixed(0)}</span>
                                             </div>
                                         ))}
@@ -472,20 +466,63 @@ const Orders = () => {
                         </div>
                     </div>
 
-                    {/* Tabs */}
-                    <div className="flex gap-2 mb-6 overflow-x-auto pb-2 shrink-0">
-                        {tabs.map(tab => (
-                            <button
-                                key={tab.key}
-                                onClick={() => setActiveTab(tab.key)}
-                                className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${activeTab === tab.key
-                                    ? 'bg-orange-500 text-white shadow-md'
-                                    : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                    }`}
-                            >
-                                {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
-                            </button>
-                        ))}
+                    {/* Deal Selection Modal */}
+                    {selectedDealForModal && (
+                        <DealSelectionModal
+                            deal={selectedDealForModal}
+                            allItems={allItems}
+                            onClose={() => setSelectedDealForModal(null)}
+                            onAddToOrder={addDealToCart}
+                        />
+                    )}
+
+                    {/* Tabs & Filters */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 shrink-0">
+                        <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto">
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setActiveTab(tab.key)}
+                                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${activeTab === tab.key
+                                        ? 'bg-orange-500 text-white shadow-md'
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                                        }`}
+                                >
+                                    {tab.label} <span className="ml-1 opacity-70">({tab.count})</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Time Filters */}
+                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm shrink-0">
+                            <Clock size={16} className="text-gray-400" />
+                            <input
+                                type="time"
+                                value={filterFromTime}
+                                onChange={e => setFilterFromTime(e.target.value)}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                className="text-sm outline-none bg-transparent cursor-pointer relative"
+                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
+                            />
+                            <span className="text-gray-400 text-sm">to</span>
+                            <input
+                                type="time"
+                                value={filterToTime}
+                                onChange={e => setFilterToTime(e.target.value)}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                className="text-sm outline-none bg-transparent cursor-pointer relative"
+                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
+                            />
+                            {(filterFromTime || filterToTime) && (
+                                <button
+                                    onClick={() => { setFilterFromTime(''); setFilterToTime(''); }}
+                                    className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+                                    title="Clear time filter"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {!currentRegistry && (
@@ -570,9 +607,15 @@ const Orders = () => {
                                                     )}
                                                 </>
                                             )}
-                                            <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-gray-50/50">
-                                                <Clock size={12} className="text-gray-400" />
-                                                <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <div className="flex items-center justify-between mt-1 pt-1 border-t border-gray-50/50">
+                                                <div className="flex items-center gap-1.5 text-gray-500">
+                                                    <Clock size={12} className="text-gray-400" />
+                                                    <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 ${order.status === 'Completed' || order.status === 'Cancelled' || order.status === 'Refunded' ? "text-gray-500" : "text-orange-600 font-medium"}`}>
+                                                    <Clock size={12} className={order.status === 'Completed' || order.status === 'Cancelled' || order.status === 'Refunded' ? "text-gray-400" : "text-orange-500"} />
+                                                    <span><OrderTimeElapsed createdAt={order.created_at} updatedAt={order.updated_at} status={order.status} /></span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -666,181 +709,16 @@ const Orders = () => {
             </div>
 
 
-            {/* Modals (Payment, Refund, Details, Print) - Keep outside main flow */}
-            {/* Payment Method Selection Modal */}
-            {showPaymentModal && paymentOrderId && (() => {
-                const order = orders.find(o => o.id === paymentOrderId);
-                const orderTotal = order?.total ? Number(order.total).toFixed(0) : '0';
-                const paymentOrderDisplayNum = order ? orders.findIndex((o: any) => o.id === paymentOrderId) + 1 : paymentOrderId;
-
-                return (
-                    <div
-                        className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
-                        onClick={(e) => {
-                            if (e.target === e.currentTarget) {
-                                setShowPaymentModal(false);
-                                setPaymentOrderId(null);
-                            }
-                        }}
-                    >
-                        <div
-                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                                <h2 className="text-xl font-bold">Collect Payment</h2>
-                                <button
-                                    onClick={() => {
-                                        setShowPaymentModal(false);
-                                        setPaymentOrderId(null);
-                                        setSplitPayments([]);
-                                    }}
-                                    className="p-2 hover:bg-gray-100 rounded-lg"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="p-4 space-y-4">
-                                <div className="bg-gray-50 p-3 rounded-lg">
-                                    <div className="text-sm text-gray-500">Order</div>
-                                    <div className="font-bold">#{String(paymentOrderDisplayNum).padStart(3, '0')}</div>
-                                    <div className="text-sm text-gray-600 mt-1">
-                                        Total: Rs. {orderTotal}
-                                    </div>
-                                </div>
-                                {paymentAccounts.length === 0 ? (
-                                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-800 text-sm">
-                                        Add payment accounts in <strong>Payment Methods</strong> to receive distinct payments. Cash and Other are available.
-                                    </div>
-                                ) : null}
-
-                                <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                                    {splitPayments.map((payment, index) => (
-                                        <div key={index} className="flex flex-col sm:flex-row gap-3 p-3 border border-gray-100 rounded-xl bg-white shadow-sm relative">
-                                            {splitPayments.length > 1 && (
-                                                <button
-                                                    onClick={() => setSplitPayments(prev => prev.filter((_, i) => i !== index))}
-                                                    className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 hover:bg-red-200"
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            )}
-                                            <div className="flex-1 space-y-3">
-                                                <div className="flex gap-2">
-                                                    <div className="w-1/2">
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-                                                        <select
-                                                            value={payment.type}
-                                                            onChange={e => {
-                                                                const newType = e.target.value as PaymentReceivingFrom;
-                                                                setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, type: newType, account_id: (newType === 'Cash' || newType === 'Other') ? null : p.account_id } : p));
-                                                            }}
-                                                            className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-orange-500"
-                                                        >
-                                                            {paymentOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="w-1/2">
-                                                        <label className="block text-xs font-medium text-gray-500 mb-1">Amount (Rs.)</label>
-                                                        <div className="flex">
-                                                            <input
-                                                                type="number"
-                                                                value={payment.amount}
-                                                                onChange={e => setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, amount: e.target.value } : p))}
-                                                                className="w-full p-2 border border-gray-200 rounded-l-lg text-sm outline-none focus:border-orange-500"
-                                                                placeholder="Amount"
-                                                            />
-                                                            <button
-                                                                onClick={() => {
-                                                                    const currentOtherSum = splitPayments.reduce((sum, p, i) => i !== index ? sum + Number(p.amount || 0) : sum, 0);
-                                                                    const remaining = Math.max(0, Number(order?.total) - currentOtherSum);
-                                                                    setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, amount: remaining.toString() } : p));
-                                                                }}
-                                                                className="px-2 bg-gray-100 border border-l-0 border-gray-200 rounded-r-lg text-xs font-medium hover:bg-gray-200 text-gray-600"
-                                                                title="Fill remaining amount"
-                                                            >
-                                                                Max
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Account</label>
-                                                    {payment.type === 'Cash' ? (
-                                                        <div className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700 font-medium cursor-not-allowed">
-                                                            IN DRAW
-                                                        </div>
-                                                    ) : payment.type === 'Other' ? (
-                                                        <div className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
-                                                            N/A
-                                                        </div>
-                                                    ) : (
-                                                        <select
-                                                            value={payment.account_id || ''}
-                                                            onChange={e => setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, account_id: e.target.value ? Number(e.target.value) : null } : p))}
-                                                            className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-orange-500"
-                                                        >
-                                                            <option value="">Select Account</option>
-                                                            {paymentAccounts.map(account => (
-                                                                <option key={account.id} value={account.id}>
-                                                                    {account.payment_method_name} - {account.account_number} {account.account_label ? `(${account.account_label})` : ''}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={() => setSplitPayments(prev => [...prev, { type: 'Bank Transfer', amount: '', account_id: null }])}
-                                    className="w-full py-2 border-2 border-dashed border-gray-200 text-gray-500 rounded-xl hover:bg-gray-50 hover:border-gray-300 font-medium flex justify-center items-center gap-2 transition-colors"
-                                >
-                                    <Plus size={16} /> Add Split Payment
-                                </button>
-
-                                {(() => {
-                                    const totalReceived = splitPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-                                    const remaining = Math.max(0, Number(order?.total) - totalReceived);
-                                    const isComplete = totalReceived >= Number(order?.total);
-
-                                    return (
-                                        <div className={`p-3 rounded-xl border ${isComplete ? 'bg-green-50 border-green-200 text-green-800' : 'bg-orange-50 border-orange-200 text-orange-800'} flex justify-between items-center font-bold`}>
-                                            <span>Received: Rs. {totalReceived}</span>
-                                            {isComplete ? (
-                                                <span className="flex items-center gap-1"><Check size={16} /> Fully Paid</span>
-                                            ) : (
-                                                <span>Remaining: Rs. {remaining}</span>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                <div className="flex gap-3 pt-2">
-                                    <button
-                                        onClick={() => {
-                                            setShowPaymentModal(false);
-                                            setPaymentOrderId(null);
-                                            setSplitPayments([]);
-                                        }}
-                                        className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={confirmPayment}
-                                        disabled={splitPayments.reduce((s, p) => s + Number(p.amount || 0), 0) < Number(order?.total) || splitPayments.some(p => p.type !== 'Cash' && p.type !== 'Other' && !p.account_id)}
-                                        className="flex-1 px-4 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Complete Entry
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            {/* Modals (Payment, Refund, Details, Print) - Keep outside m            {/* Payment Modal */}
+            <PaymentModal
+                isOpen={showPaymentModal}
+                onClose={() => {
+                    setShowPaymentModal(false);
+                    setPaymentOrderId(null);
+                }}
+                order={orders.find(o => o.id === paymentOrderId)}
+                onPaymentComplete={confirmPayment}
+            />
 
             {/* Order Detail Modal */}
             {selectedOrder && (() => {

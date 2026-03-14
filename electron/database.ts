@@ -115,6 +115,30 @@ export async function initDatabase() {
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
       );
 
+      CREATE TABLE IF NOT EXISTS deals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        discount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deal_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        deal_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        quantity INT DEFAULT 1,
+        FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS deal_category_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        deal_category_id INT NOT NULL,
+        item_id INT NOT NULL,
+        FOREIGN KEY (deal_category_id) REFERENCES deal_categories(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS riders (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -179,12 +203,31 @@ export async function initDatabase() {
       CREATE TABLE IF NOT EXISTS order_payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         order_id INT NOT NULL,
+        registry_id INT,
         payment_type VARCHAR(50) NOT NULL,
         account_id INT,
         amount DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY(registry_id) REFERENCES registries(id) ON DELETE SET NULL,
         FOREIGN KEY(account_id) REFERENCES payment_accounts(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS other_sale_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS other_sales (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category_id INT NOT NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        note TEXT,
+        registry_id INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(category_id) REFERENCES other_sale_categories(id) ON DELETE CASCADE,
+        FOREIGN KEY(registry_id) REFERENCES registries(id) ON DELETE SET NULL
       );
     `;
 
@@ -222,6 +265,20 @@ export async function initDatabase() {
       console.log('Migrated settings value column to LONGTEXT');
     } catch (e) {
       console.error('Failed to migrate settings value column', e);
+    }
+
+    // Migration: add registry_id column to order_payments if missing
+    try {
+      const [cols]: any = await connection.query(
+        "SELECT COUNT(*) as c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_payments' AND COLUMN_NAME = 'registry_id'"
+      );
+      if (cols && cols[0] && cols[0].c === 0) {
+        await connection.query('ALTER TABLE order_payments ADD COLUMN registry_id INT AFTER order_id');
+        await connection.query('ALTER TABLE order_payments ADD FOREIGN KEY (registry_id) REFERENCES registries(id) ON DELETE SET NULL');
+        console.log('Added registry_id column to order_payments');
+      }
+    } catch (e) {
+      console.error('Failed to add registry_id to order_payments', e);
     }
 
     // Migration: fix order_items with missing item_name by looking up from items table

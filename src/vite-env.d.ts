@@ -110,6 +110,31 @@ interface Item {
     is_available: boolean;
 }
 
+interface DealCategoryItem {
+    id: number;
+    deal_category_id: number;
+    item_id: number;
+    item_name?: string;
+    item_price?: number;
+}
+
+interface DealCategory {
+    id: number;
+    deal_id: number;
+    name: string;
+    quantity: number;
+    items: DealCategoryItem[];
+}
+
+interface Deal {
+    id: number;
+    name: string;
+    price: number;
+    is_active: boolean;
+    created_at: string;
+    categories?: DealCategory[];
+}
+
 interface Window {
     api: {
         // Orders
@@ -140,6 +165,13 @@ interface Window {
         addItem: (item: any) => Promise<{ success: boolean; error?: string }>;
         updateItem: (item: any) => Promise<{ success: boolean; error?: string }>;
         deleteItem: (id: number) => Promise<{ success: boolean; error?: string }>;
+
+        // Deals
+        getDeals: () => Promise<{ success: boolean; data: Deal[]; error?: string }>;
+        createDeal: (dealData: any) => Promise<{ success: boolean; dealId?: number; error?: string }>;
+        updateDeal: (dealId: number, dealData: any) => Promise<{ success: boolean; error?: string }>;
+        deleteDeal: (id: number) => Promise<{ success: boolean; error?: string }>;
+        toggleDealStatus: (id: number, isActive: boolean) => Promise<{ success: boolean; error?: string }>;
 
         // Riders
         getRiders: () => Promise<{ success: boolean; data: Rider[]; error?: string }>;
@@ -192,6 +224,13 @@ interface Window {
         getCurrentRegistry: () => Promise<{ success: boolean; data: Registry | null; error?: string }>;
         getRegistries: (filters?: { startDate?: string; endDate?: string }) => Promise<{ success: boolean; data: Registry[]; error?: string }>;
         getRegistrySummary: (registryId: number) => Promise<{ success: boolean; data: any; error?: string }>;
+        // Other Sales
+        getOtherSaleCategories: () => Promise<{ success: boolean; data: any[]; error?: string }>;
+        addOtherSaleCategory: (name: string) => Promise<{ success: boolean; error?: string }>;
+        updateOtherSaleCategory: (id: number, name: string) => Promise<{ success: boolean; error?: string }>;
+        deleteOtherSaleCategory: (id: number) => Promise<{ success: boolean; error?: string }>;
+        getOtherSales: () => Promise<{ success: boolean; data: any[]; error?: string }>;
+        addOtherSale: (data: { category_id: number; amount: number; note?: string }) => Promise<{ success: boolean; error?: string }>;
 
         // Auto-Update
         onUpdateAvailable: (callback: (info: any) => void) => void;

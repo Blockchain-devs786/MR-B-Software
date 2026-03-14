@@ -10,6 +10,7 @@ interface CartItem {
     quantity: number;
     discount: number;
     note?: string;
+    isDeal?: boolean;
 }
 
 interface OrderSidePanelProps {
@@ -312,24 +313,24 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
     const handleSubmit = async () => {
         if (!window.api) return;
         if (!hasOpenRegistry) {
-            showToast('Start a registry to place orders.');
+            showToast('Start a registry to place orders.', 'error');
             return;
         }
 
         if (orderType === 'Dine-in' && !selectedTable) {
-            showToast('Please select a table');
+            showToast('Please select a table', 'error');
             return;
         }
-        if ((orderType === 'Takeaway' || orderType === 'Delivery') && (!customerName || !customerPhone)) {
-            showToast('Please enter customer name and phone');
+        if (orderType === 'Delivery' && (!customerName || !customerPhone)) {
+            showToast('Please enter customer name and phone', 'error');
             return;
         }
         if (orderType === 'Delivery' && !deliveryAddress) {
-            showToast('Please enter delivery address');
+            showToast('Please enter delivery address', 'error');
             return;
         }
         if (cart.length === 0) {
-            showToast('Please add items to the order');
+            showToast('Please add items to the order', 'error');
             return;
         }
 
@@ -394,7 +395,7 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
             });
             setShowKitchenReceiptModal(true);
         } else {
-            showToast((res.error || 'Failed to save order') as string);
+            showToast(((res as any).error || 'Failed to save order') as string, 'error');
         }
     };
 
@@ -437,11 +438,28 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
             const sec = dt.getSeconds().toString().padStart(2, '0');
             return `${day}/${m}/${y} ${h12}:${min}:${sec} ${ampm}`;
         };
+        const formatNotePrint = (note?: string, isCancel = false) => {
+            if (!note) return '';
+            const color = isCancel ? 'inherit' : '#c2410c';
+            if (!note.includes(' | ') && !note.includes(': ')) return `<br><span style="color:${color};font-size:11px">${escape(note)}</span>`;
+            
+            const allItems: string[] = [];
+            note.split(' | ').forEach((p: string) => {
+                const parts = p.split(': ');
+                if (parts[1]) allItems.push(...parts[1].split(', '));
+                else allItems.push(p);
+            });
+            const counts: Record<string, number> = {};
+            allItems.forEach((i: string) => counts[i] = (counts[i] || 0) + 1);
+            const itemsHtml = Object.entries(counts).map(([n, q]) => `<div>- ${q > 1 ? q + 'x ' : ''}${escape(n)}</div>`).join('');
+            return `<br><div style="color:${color};font-size:11px;padding-left:8px;margin-top:2px">${itemsHtml}</div>`;
+        };
+
         const rows = d.items.map((i: { name: string; quantity: number; note?: string }) =>
-            `<tr><td style="padding:6px 10px;vertical-align:top">${escape(i.name)}${i.note ? `<br><span style="color:#c2410c;font-size:11px">${escape(i.note)}</span>` : ''}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:600">${i.quantity}</td></tr>`
+            `<tr><td style="padding:6px 10px;vertical-align:top">${escape(i.name)}${formatNotePrint(i.note)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:600">${i.quantity}</td></tr>`
         ).join('');
         const cancelledRows = (d.previousItems || []).map((i: { name: string; quantity: number; note?: string }) =>
-            `<tr class="cancelled-row"><td style="padding:6px 10px;vertical-align:top">${escape(i.name)}${i.note ? `<br><span style="font-size:11px">${escape(i.note)}</span>` : ''}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:600">${i.quantity}</td></tr>`
+            `<tr class="cancelled-row"><td style="padding:6px 10px;vertical-align:top">${escape(i.name)}${formatNotePrint(i.note, true)}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:600">${i.quantity}</td></tr>`
         ).join('');
         win.document.write(`
             <!DOCTYPE html>
@@ -572,8 +590,8 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
                             </>
                         )}
 
-                        {/* Takeaway / Delivery Primary Fields */}
-                        {(orderType === 'Takeaway' || orderType === 'Delivery') && (
+                        {/* Delivery Primary Fields */}
+                        {orderType === 'Delivery' && (
                             <>
                                 <div className="relative flex-[1.5]">
                                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer Name</label>
@@ -694,13 +712,34 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
                                     </div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <div className="flex-1">
-                                            <input
-                                                type="text"
-                                                value={item.note || ''}
-                                                onChange={e => updateNote(item.id, e.target.value)}
-                                                placeholder="Note for kitchen"
-                                                className="w-full p-1 text-xs border border-gray-200 rounded outline-none focus:border-orange-500"
-                                            />
+                                            {item.isDeal && item.note ? (
+                                                <div className="w-full p-2 text-xs bg-orange-50/50 border border-orange-100 rounded text-orange-800 space-y-1">
+                                                    {(() => {
+                                                        const allItems: string[] = [];
+                                                        item.note.split(' | ').forEach((p: string) => {
+                                                            const parts = p.split(': ');
+                                                            if (parts[1]) allItems.push(...parts[1].split(', '));
+                                                            else allItems.push(p);
+                                                        });
+                                                        const counts: Record<string, number> = {};
+                                                        allItems.forEach((i: string) => counts[i] = (counts[i] || 0) + 1);
+                                                        return Object.entries(counts).map(([n, q], idx) => (
+                                                            <div key={idx} className="flex gap-2">
+                                                                <span className="opacity-60">-</span>
+                                                                <span className="font-medium">{q > 1 ? q + 'x ' : ''}{n}</span>
+                                                            </div>
+                                                        ));
+                                                    })()}
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    value={item.note || ''}
+                                                    onChange={e => updateNote(item.id, e.target.value)}
+                                                    placeholder="Note for kitchen"
+                                                    className="w-full p-1 text-xs border border-gray-200 rounded outline-none focus:border-orange-500"
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
@@ -794,12 +833,38 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
                                 <table className="w-full text-sm">
                                     <thead><tr className="bg-amber-50 border-b-2 border-amber-200"><th className="text-left py-2 px-3 text-amber-900 font-semibold">DESCRIPTION</th><th className="text-right py-2 px-3 text-amber-900 font-semibold">QTY</th></tr></thead>
                                     <tbody>
-                                        {kitchenReceiptData.items.map((i, idx) => (
-                                            <tr key={idx} className="border-b border-gray-100 last:border-0">
-                                                <td className="py-2 px-3"><span className="font-medium text-gray-800">{i.name}</span>{i.note ? <div className="text-orange-600 text-xs mt-0.5">{i.note}</div> : null}</td>
-                                                <td className="py-2 px-3 text-right font-semibold">{i.quantity}</td>
-                                            </tr>
-                                        ))}
+                                        {kitchenReceiptData.items.map((i: any, idx: number) => {
+                                            const isNoteDeal = i.note && i.note.includes(' | ') && i.note.includes(': ');
+                                            return (
+                                                <tr key={idx} className="border-b border-gray-100 last:border-0">
+                                                    <td className="py-2 px-3">
+                                                        <span className="font-medium text-gray-800">{i.name}</span>
+                                                        {i.note && (
+                                                            <div className="text-orange-600 text-xs mt-0.5 pl-2">
+                                                                {isNoteDeal ? (
+                                                                    <div className="space-y-0.5">
+                                                                        {(() => {
+                                                                            const allItems: string[] = [];
+                                                                            i.note.split(' | ').forEach((p: string) => {
+                                                                                const parts = p.split(': ');
+                                                                                if (parts[1]) allItems.push(...parts[1].split(', '));
+                                                                                else allItems.push(p);
+                                                                            });
+                                                                            const counts: Record<string, number> = {};
+                                                                            allItems.forEach((item: string) => counts[item] = (counts[item] || 0) + 1);
+                                                                            return Object.entries(counts).map(([n, q], index) => (
+                                                                                <div key={index}>- {q > 1 ? q + 'x ' : ''}{n}</div>
+                                                                            ));
+                                                                        })()}
+                                                                    </div>
+                                                                ) : i.note}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2 px-3 text-right font-semibold">{i.quantity}</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -810,12 +875,38 @@ const OrderSidePanel = ({ isOpen, onClose, onOrderCreated, cart, onUpdateCart, h
                                         <table className="w-full text-sm">
                                             <thead><tr className="bg-gray-200 border-b border-gray-400"><th className="text-left py-2 px-3 text-gray-700 font-semibold">DESCRIPTION</th><th className="text-right py-2 px-3 text-gray-700 font-semibold">QTY</th></tr></thead>
                                             <tbody>
-                                                {kitchenReceiptData.previousItems.map((i, idx) => (
-                                                    <tr key={idx} className="border-b border-gray-300 last:border-0">
-                                                        <td className="py-2 px-3 line-through text-gray-500"><span>{i.name}</span>{i.note ? <div className="text-xs mt-0.5">{i.note}</div> : null}</td>
-                                                        <td className="py-2 px-3 text-right font-semibold line-through text-gray-500">{i.quantity}</td>
-                                                    </tr>
-                                                ))}
+                                                {kitchenReceiptData.previousItems.map((i: any, idx: number) => {
+                                                    const isNoteDeal = i.note && i.note.includes(' | ') && i.note.includes(': ');
+                                                    return (
+                                                        <tr key={idx} className="border-b border-gray-300 last:border-0">
+                                                            <td className="py-2 px-3 line-through text-gray-500">
+                                                                <span>{i.name}</span>
+                                                                {i.note && (
+                                                                    <div className="text-xs mt-0.5 pl-2 opacity-80">
+                                                                        {isNoteDeal ? (
+                                                                            <div className="space-y-0.5">
+                                                                                {(() => {
+                                                                                    const allItems: string[] = [];
+                                                                                    i.note.split(' | ').forEach((p: string) => {
+                                                                                        const parts = p.split(': ');
+                                                                                        if (parts[1]) allItems.push(...parts[1].split(', '));
+                                                                                        else allItems.push(p);
+                                                                                    });
+                                                                                    const counts: Record<string, number> = {};
+                                                                                    allItems.forEach((item: string) => counts[item] = (counts[item] || 0) + 1);
+                                                                                    return Object.entries(counts).map(([n, q], index) => (
+                                                                                        <div key={index}>- {q > 1 ? q + 'x ' : ''}{n}</div>
+                                                                                    ));
+                                                                                })()}
+                                                                            </div>
+                                                                        ) : i.note}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2 px-3 text-right font-semibold line-through text-gray-500">{i.quantity}</td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

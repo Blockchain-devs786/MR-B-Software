@@ -117,7 +117,7 @@ const OrderReceipt = forwardRef<HTMLDivElement, OrderReceiptProps>(({ order }, r
                 </div>
                 <div className="grid grid-cols-[120px_1fr] mb-0.5 text-[12px]">
                     <span className="text-left">Customer Name :</span>
-                    <span className="text-left uppercase">{order.customer_name || 'N/A'}</span>
+                    <span className="text-left uppercase">{order.type === 'Takeaway' ? 'N/A' : (order.customer_name || 'N/A')}</span>
                 </div>
                 {order.type === 'Delivery' && (
                     <div className="grid grid-cols-[120px_1fr] mb-0.5 text-[12px]">
@@ -127,7 +127,7 @@ const OrderReceipt = forwardRef<HTMLDivElement, OrderReceiptProps>(({ order }, r
                 )}
                 <div className="grid grid-cols-[120px_1fr] mb-0.5 text-[12px]">
                     <span className="text-left">Customer Number :</span>
-                    <span className="text-left">{order.customer_phone || 'N/A'}</span>
+                    <span className="text-left">{order.type === 'Takeaway' ? 'N/A' : (order.customer_phone || 'N/A')}</span>
                 </div>
 
                 <table className="w-full mt-1 mb-1 border-b border-dashed border-black">
@@ -142,7 +142,32 @@ const OrderReceipt = forwardRef<HTMLDivElement, OrderReceiptProps>(({ order }, r
                     <tbody>
                         {(order.items || []).map((item: any, index: number) => (
                             <tr key={index}>
-                                <td className="py-1 text-[12px] leading-tight align-top">{item.item_name}</td>
+                                <td className="py-1 text-[12px] leading-tight align-top">
+                                    <div className="font-semibold">{item.item_name}</div>
+                                    {item.note && (
+                                        <div className="pl-2 mt-0.5 text-[11px] text-gray-700 space-y-0.5">
+                                            {(() => {
+                                                if (!item.note.includes(' | ') && !item.note.includes(': ')) {
+                                                    return <div>{item.note}</div>;
+                                                }
+                                                const allItems: string[] = [];
+                                                item.note.split(' | ').forEach((p: string) => {
+                                                    const [_, itemsStr] = p.split(': ');
+                                                    if (itemsStr) {
+                                                        allItems.push(...itemsStr.split(', '));
+                                                    } else {
+                                                        allItems.push(p);
+                                                    }
+                                                });
+                                                const counts: Record<string, number> = {};
+                                                allItems.forEach(i => counts[i] = (counts[i] || 0) + 1);
+                                                return Object.entries(counts).map(([name, qty], idx) => (
+                                                    <div key={idx}>- {qty > 1 ? `${qty}x ` : ''}{name}</div>
+                                                ));
+                                            })()}
+                                        </div>
+                                    )}
+                                </td>
                                 <td className="text-center py-1 text-[12px] font-bold leading-tight align-top">
                                     {Number(item.quantity).toFixed(2)}<br />
                                     <span className="font-normal text-[10px]">ps</span>
@@ -166,6 +191,13 @@ const OrderReceipt = forwardRef<HTMLDivElement, OrderReceiptProps>(({ order }, r
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {order.status === 'Cancelled' && (
+                    <div className="mt-2 mb-2 text-[11px] border border-dashed border-gray-400 p-1 text-red-600">
+                        <div className="font-bold border-b border-dashed border-gray-300 mb-1">Cancel Reason:</div>
+                        <div>{order.cancel_reason || 'Cancelled by user'}</div>
                     </div>
                 )}
 

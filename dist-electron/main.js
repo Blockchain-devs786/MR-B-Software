@@ -25391,6 +25391,30 @@ async function initDatabase() {
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
       );
 
+      CREATE TABLE IF NOT EXISTS deals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        discount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deal_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        deal_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        quantity INT DEFAULT 1,
+        FOREIGN KEY (deal_id) REFERENCES deals(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS deal_category_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        deal_category_id INT NOT NULL,
+        item_id INT NOT NULL,
+        FOREIGN KEY (deal_category_id) REFERENCES deal_categories(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS riders (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -25455,12 +25479,31 @@ async function initDatabase() {
       CREATE TABLE IF NOT EXISTS order_payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         order_id INT NOT NULL,
+        registry_id INT,
         payment_type VARCHAR(50) NOT NULL,
         account_id INT,
         amount DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY(registry_id) REFERENCES registries(id) ON DELETE SET NULL,
         FOREIGN KEY(account_id) REFERENCES payment_accounts(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS other_sale_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS other_sales (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category_id INT NOT NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        note TEXT,
+        registry_id INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(category_id) REFERENCES other_sale_categories(id) ON DELETE CASCADE,
+        FOREIGN KEY(registry_id) REFERENCES registries(id) ON DELETE SET NULL
       );
     `;
     await connection2.query(schema);
@@ -25489,6 +25532,18 @@ async function initDatabase() {
       console.log("Migrated settings value column to LONGTEXT");
     } catch (e2) {
       console.error("Failed to migrate settings value column", e2);
+    }
+    try {
+      const [cols] = await connection2.query(
+        "SELECT COUNT(*) as c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_payments' AND COLUMN_NAME = 'registry_id'"
+      );
+      if (cols && cols[0] && cols[0].c === 0) {
+        await connection2.query("ALTER TABLE order_payments ADD COLUMN registry_id INT AFTER order_id");
+        await connection2.query("ALTER TABLE order_payments ADD FOREIGN KEY (registry_id) REFERENCES registries(id) ON DELETE SET NULL");
+        console.log("Added registry_id column to order_payments");
+      }
+    } catch (e2) {
+      console.error("Failed to add registry_id to order_payments", e2);
     }
     try {
       const [result] = await connection2.query(
@@ -95739,11 +95794,13 @@ function setupIpcHandlers() {
     try {
       await query("UPDATE orders SET payment_status = ?, payment_method = ?, payment_type = ? WHERE id = ?", [paymentStatus, paymentMethod || null, paymentType || null, orderId]);
       if (payments && Array.isArray(payments) && payments.length > 0) {
+        const currentRegResult = await query("SELECT id FROM registries WHERE status = 'Open' ORDER BY start_time DESC LIMIT 1");
+        const targetRegistryId = currentRegResult && currentRegResult.length > 0 ? currentRegResult[0].id : null;
         await query("DELETE FROM order_payments WHERE order_id = ?", [orderId]);
         for (const payment of payments) {
           await query(
-            "INSERT INTO order_payments (order_id, payment_type, account_id, amount) VALUES (?, ?, ?, ?)",
-            [orderId, payment.type, payment.account_id || null, payment.amount]
+            "INSERT INTO order_payments (order_id, registry_id, payment_type, account_id, amount) VALUES (?, ?, ?, ?, ?)",
+            [orderId, targetRegistryId, payment.type, payment.account_id || null, payment.amount]
           );
         }
       }
@@ -95879,9 +95936,10 @@ function setupIpcHandlers() {
       }
       for (const item of items) {
         const lineTotal = item.unit_price * item.quantity - (item.discount || 0);
+        const dbItemId = item.originalDealId || (typeof item.id === "number" ? item.id : null);
         await query(
           "INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [orderId, item.id, item.name, item.quantity, item.unit_price, item.discount || 0, lineTotal, item.note || null]
+          [orderId, dbItemId, item.name, item.quantity, item.unit_price, item.discount || 0, lineTotal, item.note || null]
         );
       }
       const countResult = await query("SELECT COUNT(*) as cnt FROM orders WHERE registry_id = ?", [registryId]);
@@ -95941,9 +95999,10 @@ function setupIpcHandlers() {
       await query("DELETE FROM order_items WHERE order_id = ?", [orderId]);
       for (const item of items) {
         const lineTotal = item.unit_price * item.quantity - (item.discount || 0);
+        const dbItemId = item.originalDealId || (typeof item.id === "number" ? item.id : null);
         await query(
           "INSERT INTO order_items (order_id, item_id, item_name, quantity, unit_price, discount, line_total, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [orderId, item.id, item.name, item.quantity, item.unit_price, item.discount || 0, lineTotal, item.note || null]
+          [orderId, dbItemId, item.name, item.quantity, item.unit_price, item.discount || 0, lineTotal, item.note || null]
         );
       }
       if (type === "Dine-in" && table_id) {
@@ -96059,7 +96118,9 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("add-item", async (_event, item) => {
     try {
-      await query("INSERT INTO items (name, price, category_id, is_available) VALUES (?, ?, ?, ?)", [item.name, item.price, item.category_id, item.is_available ?? true]);
+      const maxResult = await query("SELECT MAX(id) as maxId FROM (SELECT id FROM items UNION ALL SELECT id FROM deals) as combined");
+      const nextId = maxResult && maxResult[0] && maxResult[0].maxId ? Number(maxResult[0].maxId) + 1 : 1;
+      await query("INSERT INTO items (id, name, price, category_id, is_available) VALUES (?, ?, ?, ?, ?)", [nextId, item.name, item.price, item.category_id, item.is_available ?? true]);
       return { success: true };
     } catch (error2) {
       return { success: false, error: error2.message };
@@ -96076,6 +96137,79 @@ function setupIpcHandlers() {
   ipcMain.handle("delete-item", async (_event, id) => {
     try {
       await query("DELETE FROM items WHERE id=?", [id]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("get-deals", async () => {
+    try {
+      const deals = await query("SELECT * FROM deals ORDER BY created_at DESC");
+      const categories = await query("SELECT * FROM deal_categories");
+      const items = await query(`
+                SELECT dci.*, i.name as item_name, i.price as item_price
+                FROM deal_category_items dci
+                JOIN items i ON dci.item_id = i.id
+            `);
+      const formattedDeals = deals.map((deal) => {
+        const dealCats = categories.filter((c) => c.deal_id === deal.id).map((c) => {
+          const catItems = items.filter((i) => i.deal_category_id === c.id);
+          return { ...c, items: catItems };
+        });
+        return { ...deal, categories: dealCats };
+      });
+      return { success: true, data: formattedDeals };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("create-deal", async (_event, dealData) => {
+    try {
+      const { name: name2, discount, is_active, categories } = dealData;
+      const maxResult = await query("SELECT MAX(id) as maxId FROM (SELECT id FROM items UNION ALL SELECT id FROM deals) as combined");
+      const nextId = maxResult && maxResult[0] && maxResult[0].maxId ? Number(maxResult[0].maxId) + 1 : 1;
+      await query("INSERT INTO deals (id, name, discount, is_active) VALUES (?, ?, ?, ?)", [nextId, name2, discount || 0, is_active ?? true]);
+      const dealId = nextId;
+      for (const cat of categories) {
+        const catResult = await query("INSERT INTO deal_categories (deal_id, name, quantity) VALUES (?, ?, ?)", [dealId, cat.name, cat.quantity]);
+        const catId = catResult.insertId;
+        for (const itemId of cat.items) {
+          await query("INSERT INTO deal_category_items (deal_category_id, item_id) VALUES (?, ?)", [catId, itemId]);
+        }
+      }
+      return { success: true, dealId };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("update-deal", async (_event, { dealId, dealData }) => {
+    try {
+      const { name: name2, discount, is_active, categories } = dealData;
+      await query("UPDATE deals SET name=?, discount=?, is_active=? WHERE id=?", [name2, discount || 0, is_active ?? true, dealId]);
+      await query("DELETE FROM deal_categories WHERE deal_id=?", [dealId]);
+      for (const cat of categories) {
+        const catResult = await query("INSERT INTO deal_categories (deal_id, name, quantity) VALUES (?, ?, ?)", [dealId, cat.name, cat.quantity]);
+        const catId = catResult.insertId;
+        for (const itemId of cat.items) {
+          await query("INSERT INTO deal_category_items (deal_category_id, item_id) VALUES (?, ?)", [catId, itemId]);
+        }
+      }
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("delete-deal", async (_event, id) => {
+    try {
+      await query("DELETE FROM deals WHERE id=?", [id]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("toggle-deal-status", async (_event, { id, isActive }) => {
+    try {
+      await query("UPDATE deals SET is_active=? WHERE id=?", [isActive, id]);
       return { success: true };
     } catch (error2) {
       return { success: false, error: error2.message };
@@ -96446,6 +96580,70 @@ function setupIpcHandlers() {
       return { success: false, error: error2.message };
     }
   });
+  ipcMain.handle("get-other-sale-categories", async () => {
+    try {
+      const categories = await query("SELECT * FROM other_sale_categories ORDER BY name");
+      return { success: true, data: categories };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("add-other-sale-category", async (_event, name2) => {
+    try {
+      await query("INSERT INTO other_sale_categories (name) VALUES (?)", [name2]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("update-other-sale-category", async (_event, { id, name: name2 }) => {
+    try {
+      await query("UPDATE other_sale_categories SET name=? WHERE id=?", [name2, id]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("delete-other-sale-category", async (_event, id) => {
+    try {
+      const check = await query("SELECT COUNT(*) as count FROM other_sales WHERE category_id = ?", [id]);
+      if (check && check[0] && check[0].count > 0) {
+        return { success: false, error: "Cannot delete category with existing sales" };
+      }
+      await query("DELETE FROM other_sale_categories WHERE id=?", [id]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("get-other-sales", async () => {
+    try {
+      const currentRegResult = await query("SELECT id FROM registries WHERE status = 'Open' ORDER BY start_time DESC LIMIT 1");
+      const targetRegistryId = currentRegResult && currentRegResult.length > 0 ? currentRegResult[0].id : null;
+      if (!targetRegistryId) return { success: true, data: [] };
+      const sales = await query(`
+                SELECT os.*, c.name as category_name
+                FROM other_sales os
+                LEFT JOIN other_sale_categories c ON os.category_id = c.id
+                WHERE os.registry_id = ?
+                ORDER BY os.created_at DESC
+            `, [targetRegistryId]);
+      return { success: true, data: sales };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
+  ipcMain.handle("add-other-sale", async (_event, { category_id, amount, note }) => {
+    try {
+      const currentRegResult = await query("SELECT id FROM registries WHERE status = 'Open' ORDER BY start_time DESC LIMIT 1");
+      const targetRegistryId = currentRegResult && currentRegResult.length > 0 ? currentRegResult[0].id : null;
+      if (!targetRegistryId) return { success: false, error: "No open registry found" };
+      await query("INSERT INTO other_sales (category_id, amount, note, registry_id) VALUES (?, ?, ?, ?)", [category_id, amount, note || null, targetRegistryId]);
+      return { success: true };
+    } catch (error2) {
+      return { success: false, error: error2.message };
+    }
+  });
   ipcMain.handle("get-current-registry", async () => {
     try {
       const registries = await query('SELECT * FROM registries WHERE status = "Open" ORDER BY start_time DESC LIMIT 1');
@@ -96576,13 +96774,27 @@ function setupIpcHandlers() {
                  WHERE o.registry_id = ? `,
         [registryId]
       );
+      const otherSales = await query(
+        `SELECT os.*, c.name as category_name FROM other_sales os 
+                 LEFT JOIN other_sale_categories c ON c.id = os.category_id 
+                 WHERE os.registry_id = ?`,
+        [registryId]
+      );
+      const pendingRecovers = await query(
+        `SELECT op.*, o.id as order_number FROM order_payments op 
+                 INNER JOIN orders o ON op.order_id = o.id 
+                 WHERE op.registry_id = ? AND (o.registry_id != ? OR o.registry_id IS NULL)`,
+        [registryId, registryId]
+      );
       return {
         success: true,
         data: {
           registry: reg,
           orders: orders || [],
           expenses: expenses || [],
-          refunds: refunds || []
+          refunds: refunds || [],
+          otherSales: otherSales || [],
+          pendingRecovers: pendingRecovers || []
         }
       };
     } catch (error2) {

@@ -247,7 +247,7 @@ const PrintPreviewModal = ({ isOpen, onClose, order }: PrintPreviewModalProps) =
                 </div>
                 <div class="details-grid">
                     <span class="details-label">Customer Name :</span>
-                    <span class="details-value uppercase">${order.customer_name || 'N/A'}</span>
+                    <span class="details-value uppercase">${order.type === 'Takeaway' ? 'N/A' : (order.customer_name || 'N/A')}</span>
                 </div>
                 ${order.type === 'Delivery' ? `
                     <div class="details-grid">
@@ -257,7 +257,7 @@ const PrintPreviewModal = ({ isOpen, onClose, order }: PrintPreviewModalProps) =
                 ` : ''}
                 <div class="details-grid">
                     <span class="details-label">Customer Number :</span>
-                    <span class="details-value">${order.customer_phone || 'N/A'}</span>
+                    <span class="details-value">${order.type === 'Takeaway' ? 'N/A' : (order.customer_phone || 'N/A')}</span>
                 </div>
 
                 <table>
@@ -270,9 +270,34 @@ const PrintPreviewModal = ({ isOpen, onClose, order }: PrintPreviewModalProps) =
                         </tr>
                     </thead>
                     <tbody>
-                        ${(order.items || []).map((item: any) => `
+                        ${(order.items || []).map((item: any) => {
+                            let noteHtml = '';
+                            if (item.note) {
+                                if (!item.note.includes(' | ') && !item.note.includes(': ')) {
+                                    noteHtml = `<div style="padding-left: 8px; font-size: 11px; margin-top: 2px;">${item.note}</div>`;
+                                } else {
+                                    const allItems: string[] = [];
+                                    item.note.split(' | ').forEach((p: string) => {
+                                        const [_, itemsStr] = p.split(': ');
+                                        if (itemsStr) {
+                                            allItems.push(...itemsStr.split(', '));
+                                        } else {
+                                            allItems.push(p);
+                                        }
+                                    });
+                                    const counts: Record<string, number> = {};
+                                    allItems.forEach((i: string) => counts[i] = (counts[i] || 0) + 1);
+                                    noteHtml = `<div style="padding-left: 8px; font-size: 11px; margin-top: 2px;">` + 
+                                        Object.entries(counts).map(([name, qty]) => `<div>- ${qty > 1 ? qty + 'x ' : ''}${name}</div>`).join('') +
+                                        `</div>`;
+                                }
+                            }
+                            return `
                             <tr>
-                                <td>${item.item_name}</td>
+                                <td>
+                                    <div style="font-weight: bold;">${item.item_name}</div>
+                                    ${noteHtml}
+                                </td>
                                 <td class="text-center font-bold">
                                     ${Number(item.quantity).toFixed(2)}<br>
                                     <span style="font-weight:normal; font-size: 10px;">ps</span>
@@ -280,7 +305,8 @@ const PrintPreviewModal = ({ isOpen, onClose, order }: PrintPreviewModalProps) =
                                 <td class="text-center">${Number(item.unit_price).toFixed(2)}</td>
                                 <td class="text-center">${Number(item.line_total).toFixed(2)}</td>
                             </tr>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
 
@@ -333,6 +359,13 @@ const PrintPreviewModal = ({ isOpen, onClose, order }: PrintPreviewModalProps) =
                                 <span>${Number(p.amount).toFixed(2)}</span>
                             </div>
                         `).join('')}
+                    </div>
+                ` : ''}
+
+                ${order.status === 'Cancelled' ? `
+                    <div style="margin-top: 8px; margin-bottom: 8px; font-size: 11px; border: 1px dashed #999; padding: 4px; color: #dc2626;">
+                        <div class="font-bold border-bottom" style="margin-bottom: 4px; border-bottom: 1px dashed #ccc;">Cancel Reason:</div>
+                        <div>${order.cancel_reason || 'Cancelled by user'}</div>
                     </div>
                 ` : ''}
 

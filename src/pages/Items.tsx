@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Package, Plus, Edit, Trash2 } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Tag } from 'lucide-react';
 import AlertDialog from '../components/AlertDialog';
+import DealsTab from '../components/DealsTab';
+
+type TabType = 'items' | 'deals';
 
 const Items = () => {
+    const [activeTab, setActiveTab] = useState<TabType>('items');
     const [items, setItems] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -95,21 +99,42 @@ const Items = () => {
 
     return (
         <div className="p-8">
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-3xl font-bold text-gray-900">Items Management</h2>
-                    <p className="text-gray-500 mt-1">Manage food items and pricing</p>
+                    <h2 className="text-3xl font-bold text-gray-900">Items & Deals</h2>
+                    <p className="text-gray-500 mt-1">Manage food items, pricing, and combo deals</p>
                 </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex gap-4 mb-8 border-b border-gray-200">
                 <button
-                    onClick={() => { setEditingItem(null); setFormData({ name: '', price: '', category_id: categories.length > 0 ? String(categories[0].id) : '' }); setShowModal(true); }}
-                    className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                    onClick={() => setActiveTab('items')}
+                    className={`pb-4 px-2 font-medium transition-colors flex items-center gap-2 ${activeTab === 'items' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
                 >
-                    <Plus size={20} /> Add Item
+                    <Package size={18} /> Items
+                </button>
+                <button
+                    onClick={() => setActiveTab('deals')}
+                    className={`pb-4 px-2 font-medium transition-colors flex items-center gap-2 ${activeTab === 'deals' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                    <Tag size={18} /> Deals
                 </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-left">
+            {activeTab === 'items' && (
+                <>
+                    <div className="flex justify-end items-center mb-6">
+                        <button
+                            onClick={() => { setEditingItem(null); setFormData({ name: '', price: '', category_id: categories.length > 0 ? String(categories[0].id) : '' }); setShowModal(true); }}
+                            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                        >
+                            <Plus size={20} /> Add Item
+                        </button>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
                             <th className="px-6 py-4 font-medium text-gray-500">ID</th>
@@ -214,6 +239,12 @@ const Items = () => {
                 confirmText="Delete"
                 cancelText="Cancel"
             />
+            </>
+            )}
+
+            {activeTab === 'deals' && (
+                <DealsTab items={items} />
+            )}
         </div>
     );
 };

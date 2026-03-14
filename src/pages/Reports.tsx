@@ -3,6 +3,8 @@ import { BarChart3, Calendar, Printer, Receipt, ShoppingBag, X } from 'lucide-re
 import RegistryManager from '../components/RegistryManager';
 import RegistryPrintModal from '../components/RegistryPrintModal';
 import ExpenseReportPrintModal from '../components/ExpenseReportPrintModal';
+import PrintPreviewModal from '../components/PrintPreviewModal';
+import PaymentModal from '../components/PaymentModal';
 import { useToast } from '../components/Toast';
 
 const Reports = () => {
@@ -19,6 +21,7 @@ const Reports = () => {
     const [activeTab, setActiveTab] = useState<'registry' | 'expense' | 'previous_orders'>('registry');
     const [allExpenses, setAllExpenses] = useState<any[]>([]);
     const [showExpensePrintModal, setShowExpensePrintModal] = useState(false);
+    const [showOrderPrintModal, setShowOrderPrintModal] = useState(false);
     const [hasOpenRegistry, setHasOpenRegistry] = useState(false);
     const { showToast } = useToast();
     const prevRegistryIdsRef = useRef<string>('');
@@ -27,6 +30,8 @@ const Reports = () => {
     const [previousOrders, setPreviousOrders] = useState<any[]>([]);
     const [loadingPreviousOrders, setLoadingPreviousOrders] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentOrderId, setPaymentOrderId] = useState<number | null>(null);
 
     const statusColors: Record<string, string> = {
         Pending: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -88,6 +93,8 @@ const Reports = () => {
             let allOrders: any[] = [];
             let allExpensesArr: any[] = [];
             let allRefunds: any[] = [];
+            let allOtherSales: any[] = [];
+            let allPendingRecovers: any[] = [];
             let registriesData: any[] = [];
 
             registrySummaries.forEach((res) => {
@@ -95,6 +102,8 @@ const Reports = () => {
                     allOrders = allOrders.concat(res.data.orders || []);
                     allExpensesArr = allExpensesArr.concat(res.data.expenses || []);
                     allRefunds = allRefunds.concat(res.data.refunds || []);
+                    allOtherSales = allOtherSales.concat(res.data.otherSales || []);
+                    allPendingRecovers = allPendingRecovers.concat(res.data.pendingRecovers || []);
                     if (res.data.registry) {
                         registriesData.push(res.data.registry);
                     }
@@ -127,7 +136,7 @@ const Reports = () => {
 
             // Process the aggregated data
             const reportData = processReportDataInternal(allOrders, allExpensesArr, allRefunds, paymentAccounts,
-                startTime || new Date().toISOString(), endTime || new Date().toISOString());
+                startTime || new Date().toISOString(), endTime || new Date().toISOString(), allOtherSales, allPendingRecovers);
 
             // Add aggregated registry data
             setReportData({
@@ -189,7 +198,7 @@ const Reports = () => {
             }
         } catch (error) {
             console.error('Error fetching registries:', error);
-            if (!isPolling) showToast('Failed to load registries');
+            if (!isPolling) showToast('Failed to load registries', 'error');
             setAvailableRegistries([]);
             setReportData(null);
         } finally {
@@ -206,11 +215,11 @@ const Reports = () => {
             if (res.success) {
                 setPreviousOrders(res.data || []);
             } else {
-                if (!isPolling) showToast('Failed to load previous orders');
+                if (!isPolling) showToast('Failed to load previous orders', 'error');
             }
         } catch (error) {
             console.error('Error fetching previous orders:', error);
-            if (!isPolling) showToast('Failed to load previous orders');
+            if (!isPolling) showToast('Failed to load previous orders', 'error');
         } finally {
             if (!isPolling) setLoadingPreviousOrders(false);
         }
@@ -222,14 +231,13 @@ const Reports = () => {
         }
     }, [activeTab, fromDate, toDate, selectedRegistryId]);
 
-    const processReportDataInternal = (orders: any[], expenses: any[], refunds: any[], _paymentAccounts: any[], startDate: string, endDate: string) => {
-        // Sale Summary by Payment Type
+    const processReportDataInternal = (orders: any[], expenses: any[], refunds: any[], _paymentAccounts: any[], startDate: string, endDate: string, otherSales: any[] = [], pendingRecovers: any[] = []) => {
+        // Transaction Summary by 4 categories requested
         const saleSummary: Record<string, { count: number; amount: number }> = {
             'Cash': { count: 0, amount: 0 },
-            'Credit Sale': { count: 0, amount: 0 },
             'Bank Transfer': { count: 0, amount: 0 },
-            'Card': { count: 0, amount: 0 },
-            'Other': { count: 0, amount: 0 }
+            'Other': { count: 0, amount: 0 },
+            'Pending Recovers': { count: 0, amount: 0 }
         };
 
         // Order Type Summary
@@ -272,36 +280,29 @@ const Reports = () => {
                 totalSales += amount;
                 totalDiscount += Number(order.discount || 0);
                 totalServiceCharges += Number(order.service_charges || 0);
-                totalGST += Number(order.gst || 0);
-
-                // Sale Summary by Payment Type
+                totalGST += Number(order.gst || 0);                // Sale Summary by Payment Type (Strict 4 Categories)
                 if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
+                    // Only count payments that belong to THIS registry (since order_payments now has registry_id)
+                    // If registry_id is missing, we assume it belongs here (backward compat)
                     order.payments.forEach((p: any) => {
                         const pt = p.payment_type || 'Cash';
-                        const pKey = pt === 'Credit' ? 'Credit Sale' :
-                            pt === 'Bank Transfer' ? 'Bank Transfer' :
-                                pt === 'Card' ? 'Card' :
-                                    pt === 'Cash' ? 'Cash' : 'Other';
+                        const pKey = pt === 'Cash' ? 'Cash' : 'Bank Transfer'; // Any non-cash order placement payment goes to Bank Transfer
 
                         if (saleSummary[pKey]) {
-                            // Only count the order once per type (but could be multiple times if they do split payments of the exact same type, which is rare)
                             if (p.amount > 0) {
                                 saleSummary[pKey].amount += Number(p.amount);
-                                saleSummary[pKey].count++; // We'll count each payment entry as a "txn" for simplicity, or we could track unique order IDs.
+                                saleSummary[pKey].count++;
                             }
                         }
                     });
                 } else {
                     // Legacy fallback
                     const paymentType = order.payment_type || 'Cash';
-                    const paymentTypeKey = paymentType === 'Credit' ? 'Credit Sale' :
-                        paymentType === 'Bank Transfer' ? 'Bank Transfer' :
-                            paymentType === 'Card' ? 'Card' :
-                                paymentType === 'Cash' ? 'Cash' : 'Other';
-
-                    if (saleSummary[paymentTypeKey]) {
-                        saleSummary[paymentTypeKey].count++;
-                        saleSummary[paymentTypeKey].amount += amount;
+                    const pKey = paymentType === 'Cash' ? 'Cash' : 'Bank Transfer';
+                    
+                    if (saleSummary[pKey]) {
+                        saleSummary[pKey].amount += amount;
+                        saleSummary[pKey].count++;
                     }
                 }
 
@@ -352,6 +353,43 @@ const Reports = () => {
             }
         });
 
+        // Add pending recovers to saleSummary and totals
+        pendingRecovers.forEach((p: any) => {
+            saleSummary['Pending Recovers'].amount += Number(p.amount || 0);
+            saleSummary['Pending Recovers'].count++;
+            totalSales += Number(p.amount || 0);
+            
+            // Add to payment mode summary too if needed
+            let accountName = 'IN DRAW';
+            if (p.account_id) {
+                const acc = _paymentAccounts.find((a: any) => a.id === p.account_id);
+                if (acc) {
+                    accountName = `${acc.payment_method_name} - ${acc.account_number} ${acc.account_label ? '(' + acc.account_label + ')' : ''}`.trim();
+                }
+            } else if (p.payment_type) {
+                accountName = p.payment_type === 'Cash' ? 'IN DRAW' : p.payment_type;
+            }
+            if (!paymentModeSummary[accountName]) {
+                paymentModeSummary[accountName] = { count: 0, amount: 0 };
+            }
+            paymentModeSummary[accountName].count++;
+            paymentModeSummary[accountName].amount += Number(p.amount || 0);
+        });
+
+        // Add other sales to saleSummary and totals
+        otherSales.forEach((os: any) => {
+            saleSummary['Other'].amount += Number(os.amount || 0);
+            saleSummary['Other'].count++;
+            totalSales += Number(os.amount || 0);
+            
+            // Assuming other sales are cash
+            if (!paymentModeSummary['IN DRAW']) {
+                 paymentModeSummary['IN DRAW'] = { count: 0, amount: 0 };
+            }
+            paymentModeSummary['IN DRAW'].count++;
+            paymentModeSummary['IN DRAW'].amount += Number(os.amount || 0);
+        });
+
         // Calculate averages
         Object.keys(orderTypeSummary).forEach(type => {
             if (orderTypeSummary[type].count > 0) {
@@ -368,19 +406,13 @@ const Reports = () => {
         const totalRefunds = refunds.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
         const refundCount = refunds.length;
         const totalExpenses = expenses.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
-        const totalOrders = orders.filter((o: any) => o.status !== 'Cancelled' && o.status !== 'Refunded').length;
-        // totalSales is already sum of order.total (each order.total is final amount after discount), so do NOT subtract totalDiscount again
+        const totalOrders = orders.filter((o: any) => o.status !== 'Cancelled' && o.status !== 'Refunded').length + otherSales.length;
+        // totalSales is already sum of order.total + other sales + pending recovers
         const saleAfterDiscount = totalSales;
         const netAmount = totalSales + totalServiceCharges;
 
         // Gross Sale: Total Sales (already after discount) + Service Charges + GST - Refunds
         const grossSale = totalSales + totalServiceCharges + totalGST - totalRefunds;
-
-        // Calculate payment type totals
-        const cashSale = saleSummary['Cash'].amount;
-        const creditSale = saleSummary['Credit Sale'].amount;
-        const cardSale = saleSummary['Card'].amount;
-        const bankTransferSale = saleSummary['Bank Transfer'].amount;
 
         return {
             period: { startDate, endDate },
@@ -401,11 +433,7 @@ const Reports = () => {
             cancelledOrders,
             cancelledAmount,
             pendingOrders,
-            pendingAmount,
-            cashSale,
-            creditSale,
-            cardSale,
-            bankTransferSale
+            pendingAmount
         };
     };
 
@@ -413,7 +441,7 @@ const Reports = () => {
 
     const handlePrint = () => {
         if (!reportData) {
-            showToast('No report data to print');
+            showToast('No report data to print', 'error');
             return;
         }
         setShowPrintModal(true);
@@ -496,24 +524,50 @@ const Reports = () => {
 
             {/* From–To Date Filter: one report for all registries in range */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-                <div className="flex items-center gap-4 flex-wrap">
-                    <div className="flex items-center gap-2">
-                        <Calendar size={20} className="text-gray-400" />
-                        <span className="font-medium text-gray-700">From</span>
-                        <input
-                            type="date"
-                            value={fromDate}
-                            onChange={e => setFromDate(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-500"
-                        />
-                        <span className="font-medium text-gray-700">To</span>
-                        <input
-                            type="date"
-                            value={toDate}
-                            onChange={e => setToDate(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-500"
-                        />
+                <div className="flex flex-col gap-3">
+                    {/* Quick Presets */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-gray-500 mr-2">Quick Select:</span>
+                        <button onClick={() => { setFromDate(today); setToDate(today); }} className="px-3 py-1.5 text-sm bg-orange-50 text-orange-600 rounded-lg border border-orange-100 hover:bg-orange-100 font-medium">Today</button>
+                        <button onClick={() => { 
+                            const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+                            const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+                            setFromDate(yStr); setToDate(yStr); 
+                        }} className="px-3 py-1.5 text-sm bg-gray-50 text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-100 font-medium">Yesterday</button>
+                        <button onClick={() => { 
+                            const firstOfWeek = new Date(now); firstOfWeek.setDate(now.getDate() - now.getDay());
+                            const wStr = `${firstOfWeek.getFullYear()}-${String(firstOfWeek.getMonth() + 1).padStart(2, '0')}-${String(firstOfWeek.getDate()).padStart(2, '0')}`;
+                            setFromDate(wStr); setToDate(today); 
+                        }} className="px-3 py-1.5 text-sm bg-gray-50 text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-100 font-medium">This Week</button>
+                        <button onClick={() => { setFromDate(firstOfMonth); setToDate(today); }} className="px-3 py-1.5 text-sm bg-gray-50 text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-100 font-medium">This Month</button>
                     </div>
+
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-2">
+                            <Calendar size={20} className="text-gray-400" />
+                            <span className="font-medium text-gray-700">From</span>
+                            <div className="relative">
+                                <input
+                                    type="date"
+                                    value={fromDate}
+                                    onChange={e => setFromDate(e.target.value)}
+                                    onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                    className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-500 cursor-pointer w-[140px]"
+                                    style={{ cssText: '::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }' } as any}
+                                />
+                            </div>
+                            <span className="font-medium text-gray-700">To</span>
+                            <div className="relative">
+                                <input
+                                    type="date"
+                                    value={toDate}
+                                    onChange={e => setToDate(e.target.value)}
+                                    onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                    className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-500 cursor-pointer w-[140px]"
+                                    style={{ cssText: '::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }' } as any}
+                                />
+                            </div>
+                        </div>
                     {selectedRegistryId === 'all' && <span className="text-sm text-gray-500">All registries in this date range are combined into one report.</span>}
 
                     <div className="flex items-center gap-2 ml-4">
@@ -539,14 +593,15 @@ const Reports = () => {
                             <Printer size={18} /> Print Report
                         </button>
                     )}
-                    {activeTab === 'expense' && (
-                        <button
-                            onClick={handleExpensePrint}
-                            className="ml-auto flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium"
-                        >
-                            <Printer size={18} /> Print Expense Report
-                        </button>
-                    )}
+                        {activeTab === 'expense' && (
+                            <button
+                                onClick={handleExpensePrint}
+                                className="ml-auto flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium"
+                            >
+                                <Printer size={18} /> Print Expense Report
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1025,14 +1080,69 @@ const Reports = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-gray-100 flex gap-3">
-                                <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200">
-                                    Close
+                                <button onClick={() => setShowOrderPrintModal(true)} className="flex-1 py-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 flex items-center justify-center gap-2">
+                                    <Printer size={18} /> Print Receipt
+                                </button>
+                                {selectedOrder.status !== 'Cancelled' && selectedOrder.status !== 'Refunded' && selectedOrder.payment_status === 'Pending' && (
+                                    <button 
+                                        onClick={() => {
+                                            setPaymentOrderId(selectedOrder.id);
+                                            setShowPaymentModal(true);
+                                        }} 
+                                        className="flex-1 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 flex items-center justify-center gap-2"
+                                    >
+                                        <Receipt size={18} /> Collect Payment
+                                    </button>
+                                )}
+                                <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 flex items-center justify-center gap-2">
+                                   <X size={18} /> Close
                                 </button>
                             </div>
                         </div>
                     </div>
                 );
             })()}
+
+            {/* Payment Modal */}
+            <PaymentModal
+                isOpen={showPaymentModal}
+                onClose={() => {
+                    setShowPaymentModal(false);
+                    setPaymentOrderId(null);
+                }}
+                order={previousOrders.find(o => o.id === paymentOrderId)}
+                onPaymentComplete={async (orderId: number, status: string, payments: any[]) => {
+                    if (!window.api) return;
+                    let paymentMethodStr = 'IN DRAW';
+                    const firstAccount = payments.find(p => p.account_id);
+                    if (firstAccount) paymentMethodStr = 'Split/Bank';
+                    
+                    const res = await window.api.updatePaymentStatus(orderId, status, paymentMethodStr, payments.length === 1 ? payments[0].type : 'Split', payments);
+                    if (res.success) {
+                        const ord = previousOrders.find(o => o.id === orderId);
+                        if (ord && ord.status !== 'Completed' && ord.status !== 'Refunded' && ord.status !== 'Cancelled') {
+                            await window.api.updateOrderStatus(orderId, 'Completed');
+                        }
+                        showToast('Payment collected successfully');
+                        setShowPaymentModal(false);
+                        setPaymentOrderId(null);
+                        // Update selectedOrder so button hides immediately
+                        setSelectedOrder((prev: any) => prev && prev.id === orderId
+                            ? { ...prev, status: 'Completed', payment_status: 'Paid' }
+                            : prev
+                        );
+                        // Refresh data
+                        if (activeTab === 'previous_orders') {
+                            fetchPreviousOrders();
+                        } else {
+                            fetchAvailableRegistries();
+                        }
+                    } else {
+                        showToast(res.error || 'Failed to collect payment', 'error');
+                    }
+                }}
+            />
+
 
             {/* Print Modal - Registry */}
             <RegistryPrintModal
@@ -1048,6 +1158,13 @@ const Reports = () => {
                 expenses={allExpenses}
                 registry={reportData?.registry || null}
                 totalExpenses={expenseTotalAmount}
+            />
+
+            {/* Print Modal - Order Detail */}
+            <PrintPreviewModal
+                isOpen={showOrderPrintModal}
+                onClose={() => setShowOrderPrintModal(false)}
+                order={selectedOrder}
             />
         </div>
     );

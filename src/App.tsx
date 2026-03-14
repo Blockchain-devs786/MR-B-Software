@@ -11,6 +11,7 @@ import Riders from './pages/Riders';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import OtherSales from './pages/OtherSales';
 import UpdateNotification from './components/UpdateNotification';
 
 function App() {
@@ -83,6 +84,7 @@ function App() {
               <Route path="/riders" element={<Riders />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/other-sales" element={<OtherSales />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<div className="p-8">Page Not Found</div>} />
             </Routes>

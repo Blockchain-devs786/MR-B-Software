@@ -44,7 +44,7 @@ const RegistryManager = ({ onRegistryChange }: { onRegistryChange?: () => void }
                 showToast('Registry started successfully!', 'success');
                 onRegistryChange?.();
             } else {
-                showToast(res.error || 'Failed to start registry');
+                showToast(res.error || 'Failed to start registry', 'error');
             }
         }
     };
@@ -58,7 +58,7 @@ const RegistryManager = ({ onRegistryChange }: { onRegistryChange?: () => void }
                 showToast('Registry closed successfully! Closing balance was calculated automatically.', 'success');
                 onRegistryChange?.();
             } else {
-                showToast(res.error || 'Failed to close registry');
+                showToast(res.error || 'Failed to close registry', 'error');
             }
         }
     };

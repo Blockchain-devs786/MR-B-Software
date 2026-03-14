@@ -22,7 +22,7 @@ export const useToast = () => {
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
     const [toasts, setToasts] = useState<Toast[]>([]);
 
-    const showToast = (message: string, type: 'error' | 'success' = 'error') => {
+    const showToast = (message: string, type: 'error' | 'success' = 'success') => {
         const id = Date.now();
         setToasts(prev => [...prev, { id, message, type }]);
     };
