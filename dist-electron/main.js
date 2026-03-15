@@ -25353,7 +25353,7 @@ async function initDatabase() {
         status ENUM('Pending', 'Preparing', 'Ready', 'Completed', 'Refunded', 'Cancelled') DEFAULT 'Pending',
         payment_status ENUM('Pending', 'Paid') DEFAULT 'Pending',
         payment_method VARCHAR(255) DEFAULT 'Cash',
-        payment_type ENUM('Cash', 'Credit', 'Bank Transfer', 'Card', 'Other') DEFAULT 'Cash',
+        payment_type VARCHAR(50) DEFAULT 'Cash',
         registry_id INT,
         subtotal DECIMAL(10, 2) DEFAULT 0.00,
         discount DECIMAL(10, 2) DEFAULT 0.00,
@@ -25555,6 +25555,10 @@ async function initDatabase() {
       if (result && result.affectedRows > 0) {
         console.log(`Fixed ${result.affectedRows} order_items with missing item_name`);
       }
+    } catch (e2) {
+    }
+    try {
+      await connection2.query("ALTER TABLE orders MODIFY COLUMN payment_type VARCHAR(50) DEFAULT 'Cash'");
     } catch (e2) {
     }
     const [waiters] = await connection2.query("SELECT COUNT(*) as count FROM waiters");
@@ -95725,8 +95729,14 @@ function setupIpcHandlers() {
       }
       sql += " ORDER BY o.created_at DESC";
       const orders = await query(sql, params);
-      const items = await query("SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id");
-      const payments = await query("SELECT * FROM order_payments");
+      const orderIds = orders.map((o2) => o2.id);
+      let items = [];
+      let payments = [];
+      if (orderIds.length > 0) {
+        const placeholders = orderIds.map(() => "?").join(",");
+        items = await query(`SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id WHERE oi.order_id IN (${placeholders})`, orderIds);
+        payments = await query(`SELECT * FROM order_payments WHERE order_id IN (${placeholders})`, orderIds);
+      }
       const itemsByOrderId = {};
       items.forEach((item) => {
         if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];

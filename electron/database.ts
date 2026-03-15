@@ -77,7 +77,7 @@ export async function initDatabase() {
         status ENUM('Pending', 'Preparing', 'Ready', 'Completed', 'Refunded', 'Cancelled') DEFAULT 'Pending',
         payment_status ENUM('Pending', 'Paid') DEFAULT 'Pending',
         payment_method VARCHAR(255) DEFAULT 'Cash',
-        payment_type ENUM('Cash', 'Credit', 'Bank Transfer', 'Card', 'Other') DEFAULT 'Cash',
+        payment_type VARCHAR(50) DEFAULT 'Cash',
         registry_id INT,
         subtotal DECIMAL(10, 2) DEFAULT 0.00,
         discount DECIMAL(10, 2) DEFAULT 0.00,
@@ -294,6 +294,13 @@ export async function initDatabase() {
       }
     } catch (e) {
       // Ignore errors
+    }
+
+    // Migration: change orders.payment_type from ENUM to VARCHAR(50) for flexibility
+    try {
+      await connection.query("ALTER TABLE orders MODIFY COLUMN payment_type VARCHAR(50) DEFAULT 'Cash'");
+    } catch (e) {
+      // Ignore if already changed
     }
 
     // Seed default waiters if table is empty

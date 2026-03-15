@@ -43,8 +43,6 @@ const Orders = () => {
     const [allDeals, setAllDeals] = useState<any[]>([]); // Store all active deals
     const [selectedDealForModal, setSelectedDealForModal] = useState<any | null>(null);
 
-    const [filterFromTime, setFilterFromTime] = useState('');
-    const [filterToTime, setFilterToTime] = useState('');
 
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [showRefundModal, setShowRefundModal] = useState(false);
@@ -357,25 +355,6 @@ const Orders = () => {
 
         if (!tabMatch) return false;
 
-        if (filterFromTime || filterToTime) {
-            const orderTime = new Date(order.created_at);
-            const orderHours = orderTime.getHours();
-            const orderMinutes = orderTime.getMinutes();
-            const orderTotalMinutes = orderHours * 60 + orderMinutes;
-
-            if (filterFromTime) {
-                const [fromH, fromM] = filterFromTime.split(':').map(Number);
-                const fromTotal = fromH * 60 + fromM;
-                if (orderTotalMinutes < fromTotal) return false;
-            }
-
-            if (filterToTime) {
-                const [toH, toM] = filterToTime.split(':').map(Number);
-                const toTotal = toH * 60 + toM;
-                if (orderTotalMinutes > toTotal) return false;
-            }
-        }
-
         return true;
     });
 
@@ -493,36 +472,6 @@ const Orders = () => {
                             ))}
                         </div>
 
-                        {/* Time Filters */}
-                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm shrink-0">
-                            <Clock size={16} className="text-gray-400" />
-                            <input
-                                type="time"
-                                value={filterFromTime}
-                                onChange={e => setFilterFromTime(e.target.value)}
-                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-                                className="text-sm outline-none bg-transparent cursor-pointer relative"
-                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
-                            />
-                            <span className="text-gray-400 text-sm">to</span>
-                            <input
-                                type="time"
-                                value={filterToTime}
-                                onChange={e => setFilterToTime(e.target.value)}
-                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-                                className="text-sm outline-none bg-transparent cursor-pointer relative"
-                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
-                            />
-                            {(filterFromTime || filterToTime) && (
-                                <button
-                                    onClick={() => { setFilterFromTime(''); setFilterToTime(''); }}
-                                    className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
-                                    title="Clear time filter"
-                                >
-                                    <X size={14} />
-                                </button>
-                            )}
-                        </div>
                     </div>
 
                     {!currentRegistry && (

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { BarChart3, Calendar, Printer, Receipt, ShoppingBag, X } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Printer, Receipt, ShoppingBag, X } from 'lucide-react';
 import RegistryManager from '../components/RegistryManager';
 import RegistryPrintModal from '../components/RegistryPrintModal';
 import ExpenseReportPrintModal from '../components/ExpenseReportPrintModal';
@@ -25,6 +25,11 @@ const Reports = () => {
     const [hasOpenRegistry, setHasOpenRegistry] = useState(false);
     const { showToast } = useToast();
     const prevRegistryIdsRef = useRef<string>('');
+    const isFirstLoadRef = useRef<boolean>(true);
+
+    // Time filter for Previous Orders
+    const [filterFromTime, setFilterFromTime] = useState('');
+    const [filterToTime, setFilterToTime] = useState('');
 
     // Previous Orders State
     const [previousOrders, setPreviousOrders] = useState<any[]>([]);
@@ -56,7 +61,7 @@ const Reports = () => {
             }
         }, 5000);
         return () => clearInterval(interval);
-    }, [hasOpenRegistry, fromDate, toDate, activeTab]);
+    }, [hasOpenRegistry, fromDate, toDate, activeTab, selectedRegistryId]);
 
     useEffect(() => {
         if (!loading) {
@@ -185,11 +190,27 @@ const Reports = () => {
 
                 setAvailableRegistries(regs);
 
-                // Auto-select the new open registry when it appears
-                if (isNewRegistry && openRegistry) {
+                if (isFirstLoadRef.current && regs.length > 0) {
+                    // First load: auto-select the open registry, or latest if none open
+                    isFirstLoadRef.current = false;
+                    if (openRegistry) {
+                        setSelectedRegistryId(String(openRegistry.id));
+                    } else {
+                        // Select the latest registry (highest id)
+                        const latest = regs.reduce((a: any, b: any) => (a.id > b.id ? a : b), regs[0]);
+                        setSelectedRegistryId(String(latest.id));
+                    }
+                } else if (isNewRegistry && openRegistry) {
+                    // Auto-select the new open registry when it appears
                     setSelectedRegistryId(String(openRegistry.id));
                 } else if (selectedRegistryId !== 'all' && !regs.find((r: any) => r.id === Number(selectedRegistryId))) {
-                    setSelectedRegistryId('all');
+                    // Selected registry no longer in list: select latest
+                    if (regs.length > 0) {
+                        const latest = regs.reduce((a: any, b: any) => (a.id > b.id ? a : b), regs[0]);
+                        setSelectedRegistryId(String(latest.id));
+                    } else {
+                        setSelectedRegistryId('all');
+                    }
                 }
             } else {
                 if (!isPolling) showToast(res.error || 'Failed to load registries');
@@ -273,36 +294,43 @@ const Reports = () => {
                 pendingAmount += Number(order.total || 0);
             }
 
-            // Include all non-Cancelled orders in sales (including Refunded – the sale happened, then we refunded)
+            // Include all non-Cancelled orders in sales totals (including Refunded – the sale happened, then we refunded)
             // So Sale shows full amount, Refund shows refund amount, Gross = Sale - Refund
             if (order.status !== 'Cancelled') {
                 const amount = Number(order.total || 0);
                 totalSales += amount;
                 totalDiscount += Number(order.discount || 0);
                 totalServiceCharges += Number(order.service_charges || 0);
-                totalGST += Number(order.gst || 0);                // Sale Summary by Payment Type (Strict 4 Categories)
-                if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
-                    // Only count payments that belong to THIS registry (since order_payments now has registry_id)
-                    // If registry_id is missing, we assume it belongs here (backward compat)
-                    order.payments.forEach((p: any) => {
-                        const pt = p.payment_type || 'Cash';
-                        const pKey = pt === 'Cash' ? 'Cash' : 'Bank Transfer'; // Any non-cash order placement payment goes to Bank Transfer
+                totalGST += Number(order.gst || 0);
+
+                // Only add to Cash/Bank Transfer sale summary if payment has been received
+                // Orders with payment_status === 'Pending' should NOT appear in sale summary
+                // (they only count in the pending section)
+                const isPaymentReceived = order.payment_status === 'Paid';
+
+                if (isPaymentReceived) {
+                    // Sale Summary by Payment Type (Strict 4 Categories)
+                    if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
+                        order.payments.forEach((p: any) => {
+                            const pt = p.payment_type || 'Cash';
+                            const pKey = pt === 'Cash' ? 'Cash' : 'Bank Transfer'; // Any non-cash payment goes to Bank Transfer
+
+                            if (saleSummary[pKey]) {
+                                if (p.amount > 0) {
+                                    saleSummary[pKey].amount += Number(p.amount);
+                                    saleSummary[pKey].count++;
+                                }
+                            }
+                        });
+                    } else {
+                        // Legacy fallback
+                        const paymentType = order.payment_type || 'Cash';
+                        const pKey = paymentType === 'Cash' ? 'Cash' : 'Bank Transfer';
 
                         if (saleSummary[pKey]) {
-                            if (p.amount > 0) {
-                                saleSummary[pKey].amount += Number(p.amount);
-                                saleSummary[pKey].count++;
-                            }
+                            saleSummary[pKey].amount += amount;
+                            saleSummary[pKey].count++;
                         }
-                    });
-                } else {
-                    // Legacy fallback
-                    const paymentType = order.payment_type || 'Cash';
-                    const pKey = paymentType === 'Cash' ? 'Cash' : 'Bank Transfer';
-                    
-                    if (saleSummary[pKey]) {
-                        saleSummary[pKey].amount += amount;
-                        saleSummary[pKey].count++;
                     }
                 }
 
@@ -312,43 +340,45 @@ const Reports = () => {
                     orderTypeSummary[order.type].amount += amount;
                 }
 
-                // Payment Mode Summary (by account) 
-                if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
-                    order.payments.forEach((p: any) => {
-                        let accountName = 'IN DRAW';
-                        if (p.account_id) {
-                            const acc = _paymentAccounts.find((a: any) => a.id === p.account_id);
-                            if (acc) {
-                                accountName = `${acc.payment_method_name} - ${acc.account_number} ${acc.account_label ? '(' + acc.account_label + ')' : ''}`.trim();
+                // Payment Mode Summary (by account) – only for paid orders
+                if (isPaymentReceived) {
+                    if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
+                        order.payments.forEach((p: any) => {
+                            let accountName = 'IN DRAW';
+                            if (p.account_id) {
+                                const acc = _paymentAccounts.find((a: any) => a.id === p.account_id);
+                                if (acc) {
+                                    accountName = `${acc.payment_method_name} - ${acc.account_number} ${acc.account_label ? '(' + acc.account_label + ')' : ''}`.trim();
+                                }
+                            } else if (p.payment_type) {
+                                accountName = p.payment_type === 'Cash' ? 'IN DRAW' : p.payment_type;
                             }
-                        } else if (p.payment_type) {
-                            accountName = p.payment_type === 'Cash' ? 'IN DRAW' : p.payment_type;
-                        }
 
-                        if (!paymentModeSummary[accountName]) {
-                            paymentModeSummary[accountName] = { count: 0, amount: 0, _counted: new Set() };
-                        } else if (!paymentModeSummary[accountName]._counted) {
-                            paymentModeSummary[accountName]._counted = new Set();
-                        }
-
-                        if (p.amount > 0) {
-                            paymentModeSummary[accountName].amount += Number(p.amount);
-                            const countedSet = paymentModeSummary[accountName]._counted as Set<number>;
-                            if (!countedSet.has(order.id)) {
-                                paymentModeSummary[accountName].count++;
-                                countedSet.add(order.id);
+                            if (!paymentModeSummary[accountName]) {
+                                paymentModeSummary[accountName] = { count: 0, amount: 0, _counted: new Set() };
+                            } else if (!paymentModeSummary[accountName]._counted) {
+                                paymentModeSummary[accountName]._counted = new Set();
                             }
+
+                            if (p.amount > 0) {
+                                paymentModeSummary[accountName].amount += Number(p.amount);
+                                const countedSet = paymentModeSummary[accountName]._counted as Set<number>;
+                                if (!countedSet.has(order.id)) {
+                                    paymentModeSummary[accountName].count++;
+                                    countedSet.add(order.id);
+                                }
+                            }
+                        });
+                    } else {
+                        // Legacy fallback
+                        const paymentMethod = order.payment_method || 'IN DRAW';
+                        const displayMethod = paymentMethod === 'Cash' ? 'IN DRAW' : paymentMethod;
+                        if (!paymentModeSummary[displayMethod]) {
+                            paymentModeSummary[displayMethod] = { count: 0, amount: 0 };
                         }
-                    });
-                } else {
-                    // Legacy fallback
-                    const paymentMethod = order.payment_method || 'IN DRAW';
-                    const displayMethod = paymentMethod === 'Cash' ? 'IN DRAW' : paymentMethod;
-                    if (!paymentModeSummary[displayMethod]) {
-                        paymentModeSummary[displayMethod] = { count: 0, amount: 0 };
+                        paymentModeSummary[displayMethod].count++;
+                        paymentModeSummary[displayMethod].amount += amount;
                     }
-                    paymentModeSummary[displayMethod].count++;
-                    paymentModeSummary[displayMethod].amount += amount;
                 }
             }
         });
@@ -569,6 +599,39 @@ const Reports = () => {
                             </div>
                         </div>
                     {selectedRegistryId === 'all' && <span className="text-sm text-gray-500">All registries in this date range are combined into one report.</span>}
+
+                    {/* Time Filter */}
+                    {activeTab === 'previous_orders' && (
+                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm shrink-0">
+                            <Clock size={16} className="text-gray-400" />
+                            <input
+                                type="time"
+                                value={filterFromTime}
+                                onChange={e => setFilterFromTime(e.target.value)}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                className="text-sm outline-none bg-transparent cursor-pointer relative"
+                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
+                            />
+                            <span className="text-gray-400 text-sm">to</span>
+                            <input
+                                type="time"
+                                value={filterToTime}
+                                onChange={e => setFilterToTime(e.target.value)}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                                className="text-sm outline-none bg-transparent cursor-pointer relative"
+                                style={{ cssText: '::-webkit-calendar-picker-indicator { width: 100%; height: 100%; position: absolute; top: 0; left: 0; opacity: 0; cursor: pointer; }' } as any}
+                            />
+                            {(filterFromTime || filterToTime) && (
+                                <button
+                                    onClick={() => { setFilterFromTime(''); setFilterToTime(''); }}
+                                    className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+                                    title="Clear time filter"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2 ml-4">
                         <span className="font-medium text-gray-700">Registry:</span>
@@ -979,8 +1042,23 @@ const Reports = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {previousOrders.map((order: any, idx: number) => {
-                                            const displayNum = previousOrders.length - idx;
+                                        {previousOrders.filter((order: any) => {
+                                            if (!filterFromTime && !filterToTime) return true;
+                                            const orderTime = new Date(order.created_at);
+                                            const orderHours = orderTime.getHours();
+                                            const orderMinutes = orderTime.getMinutes();
+                                            const orderTotalMinutes = orderHours * 60 + orderMinutes;
+                                            if (filterFromTime) {
+                                                const [fromH, fromM] = filterFromTime.split(':').map(Number);
+                                                if (orderTotalMinutes < fromH * 60 + fromM) return false;
+                                            }
+                                            if (filterToTime) {
+                                                const [toH, toM] = filterToTime.split(':').map(Number);
+                                                if (orderTotalMinutes > toH * 60 + toM) return false;
+                                            }
+                                            return true;
+                                        }).map((order: any, idx: number, filteredArr: any[]) => {
+                                            const displayNum = filteredArr.length - idx;
                                             return (
                                                 <tr
                                                     key={order.id}

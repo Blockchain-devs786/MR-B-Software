@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Check } from 'lucide-react';
 
 interface PaymentModalProps {
@@ -8,27 +8,32 @@ interface PaymentModalProps {
     onPaymentComplete: (orderId: number, status: string, splitPayments: any[]) => void;
 }
 
-type PaymentReceivingFrom = 'Cash' | 'Credit' | 'Bank Transfer' | 'Card' | 'Other';
-const paymentOptions: PaymentReceivingFrom[] = ['Cash', 'Credit', 'Bank Transfer', 'Card', 'Other'];
+type PaymentReceivingFrom = 'Cash' | 'Bank Transfer';
+const paymentOptions: PaymentReceivingFrom[] = ['Cash', 'Bank Transfer'];
 
 const PaymentModal = ({ isOpen, onClose, order, onPaymentComplete }: PaymentModalProps) => {
     const [splitPayments, setSplitPayments] = useState<{ type: PaymentReceivingFrom, amount: string, account_id: number | null }[]>([]);
     const [paymentAccounts, setPaymentAccounts] = useState<any[]>([]);
+    const initializedOrderIdRef = useRef<number | null>(null);
 
     useEffect(() => {
-        if (isOpen && window.api) {
+        if (isOpen && window.api && order) {
             document.body.style.overflow = 'hidden';
             window.api.getAllPaymentAccounts().then(res => {
                 if (res.success) setPaymentAccounts(res.data || []);
             });
-            // Auto add cash payment taking full amount
-            setSplitPayments([{ type: 'Cash', amount: String(order?.total || 0), account_id: null }]);
+            // Only reset split payments when opening for a different order
+            if (initializedOrderIdRef.current !== order.id) {
+                setSplitPayments([{ type: 'Cash', amount: String(order?.total || 0), account_id: null }]);
+                initializedOrderIdRef.current = order.id;
+            }
         } else if (!isOpen) {
             document.body.style.overflow = '';
             setSplitPayments([]);
+            initializedOrderIdRef.current = null;
         }
         return () => { document.body.style.overflow = ''; };
-    }, [isOpen, order]);
+    }, [isOpen, order?.id]);
 
     if (!isOpen || !order) return null;
 
@@ -36,8 +41,8 @@ const PaymentModal = ({ isOpen, onClose, order, onPaymentComplete }: PaymentModa
         const totalReceived = splitPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
         if (totalReceived < Number(order.total)) return;
         
-        // Ensure all non-cash non-other payments have accounts
-        if (splitPayments.some(p => p.type !== 'Cash' && p.type !== 'Other' && !p.account_id)) {
+        // Ensure all bank transfer payments have accounts
+        if (splitPayments.some(p => p.type === 'Bank Transfer' && !p.account_id)) {
             return;
         }
 
@@ -102,7 +107,7 @@ const PaymentModal = ({ isOpen, onClose, order, onPaymentComplete }: PaymentModa
                                                 value={payment.type}
                                                 onChange={e => {
                                                     const newType = e.target.value as PaymentReceivingFrom;
-                                                    setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, type: newType, account_id: (newType === 'Cash' || newType === 'Other') ? null : p.account_id } : p));
+                                                    setSplitPayments(prev => prev.map((p, i) => i === index ? { ...p, type: newType, account_id: newType === 'Cash' ? null : p.account_id } : p));
                                                 }}
                                                 className="w-full p-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-orange-500"
                                             >
@@ -138,10 +143,6 @@ const PaymentModal = ({ isOpen, onClose, order, onPaymentComplete }: PaymentModa
                                         {payment.type === 'Cash' ? (
                                             <div className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700 font-medium cursor-not-allowed">
                                                 IN DRAW
-                                            </div>
-                                        ) : payment.type === 'Other' ? (
-                                            <div className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
-                                                N/A
                                             </div>
                                         ) : (
                                             <select 
@@ -195,7 +196,7 @@ const PaymentModal = ({ isOpen, onClose, order, onPaymentComplete }: PaymentModa
                         </button>
                         <button 
                             onClick={confirmPayment}
-                            disabled={splitPayments.reduce((s, p) => s + Number(p.amount || 0), 0) < Number(order?.total) || splitPayments.some(p => p.type !== 'Cash' && p.type !== 'Other' && !p.account_id)}
+                            disabled={splitPayments.reduce((s, p) => s + Number(p.amount || 0), 0) < Number(order?.total) || splitPayments.some(p => p.type === 'Bank Transfer' && !p.account_id)}
                             className="flex-1 px-4 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Complete Entry

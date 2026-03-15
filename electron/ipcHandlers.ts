@@ -42,9 +42,16 @@ export function setupIpcHandlers() {
 
             const orders = await query(sql, params) as any[];
 
-            // Get all items and payments (join with items table to ensure item_name is always available)
-            const items = await query('SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id') as any[];
-            const payments = await query('SELECT * FROM order_payments') as any[];
+            // Only fetch items and payments for the matched orders (not all globally)
+            const orderIds = orders.map((o: any) => o.id);
+            let items: any[] = [];
+            let payments: any[] = [];
+
+            if (orderIds.length > 0) {
+                const placeholders = orderIds.map(() => '?').join(',');
+                items = await query(`SELECT oi.*, COALESCE(oi.item_name, i.name) as item_name FROM order_items oi LEFT JOIN items i ON oi.item_id = i.id WHERE oi.order_id IN (${placeholders})`, orderIds) as any[];
+                payments = await query(`SELECT * FROM order_payments WHERE order_id IN (${placeholders})`, orderIds) as any[];
+            }
 
             // Group items and payments by order_id
             const itemsByOrderId: { [key: number]: any[] } = {};
