@@ -258,41 +258,26 @@ export function setupIpcHandlers() {
                 }
             }
 
-            // Handle Customer Upsert for Takeaway/Delivery
-            if ((type === 'Takeaway' || type === 'Delivery') && (customer_phone || customer_name)) {
-                let existingCustomer: any = null;
+            // Handle Customer Upsert for Takeaway/Delivery (Unique by Phone)
+            if ((type === 'Takeaway' || type === 'Delivery') && customer_phone) {
+                const phone = customer_phone.trim();
+                const existingByPhone: any = await query('SELECT * FROM customers WHERE phone = ?', [phone]) as any[];
 
-                // First try to find by phone if provided
-                if (customer_phone) {
-                    const existingByPhone: any = await query('SELECT * FROM customers WHERE phone = ?', [customer_phone]) as any[];
-                    if (existingByPhone && existingByPhone.length > 0) {
-                        existingCustomer = existingByPhone[0];
-                    }
-                }
-
-                // If not found by phone, but name is provided, try to find by name
-                if (!existingCustomer && customer_name) {
-                    const existingByName: any = await query('SELECT * FROM customers WHERE name = ?', [customer_name]) as any[];
-                    if (existingByName && existingByName.length > 0) {
-                        existingCustomer = existingByName[0];
-                    }
-                }
-
-                if (existingCustomer) {
-                    // Update existing customer details
+                if (existingByPhone && existingByPhone.length > 0) {
+                    const existingCustomer = existingByPhone[0];
+                    // Update existing customer details (Name and Address)
                     const newName = customer_name?.trim() || existingCustomer.name;
-                    const newPhone = customer_phone?.trim() || existingCustomer.phone;
                     const newAddress = delivery_address?.trim() || existingCustomer.address;
 
                     await query(
-                        'UPDATE customers SET name = ?, phone = ?, address = ? WHERE id = ?',
-                        [newName, newPhone, newAddress, existingCustomer.id]
+                        'UPDATE customers SET name = ?, address = ? WHERE id = ?',
+                        [newName, newAddress, existingCustomer.id]
                     );
                 } else {
                     // Create new customer
                     await query(
                         'INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)',
-                        [customer_name?.trim() || 'Guest', customer_phone?.trim() || '', delivery_address?.trim() || '']
+                        [customer_name?.trim() || 'Guest', phone, delivery_address?.trim() || '']
                     );
                 }
             }
@@ -375,11 +360,20 @@ export function setupIpcHandlers() {
             }
 
             if ((type === 'Takeaway' || type === 'Delivery') && customer_phone) {
-                const [existingCustomer]: any = await query('SELECT * FROM customers WHERE phone = ?', [customer_phone]) as any[];
-                if (existingCustomer) {
-                    await query('UPDATE customers SET name = ?, address = ? WHERE id = ?', [customer_name || existingCustomer.name, delivery_address || existingCustomer.address, existingCustomer.id]);
+                const phone = customer_phone.trim();
+                const existingByPhone: any = await query('SELECT * FROM customers WHERE phone = ?', [phone]) as any[];
+
+                if (existingByPhone && existingByPhone.length > 0) {
+                    const existingCustomer = existingByPhone[0];
+                    await query(
+                        'UPDATE customers SET name = ?, address = ? WHERE id = ?',
+                        [customer_name?.trim() || existingCustomer.name, delivery_address?.trim() || existingCustomer.address, existingCustomer.id]
+                    );
                 } else {
-                    await query('INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)', [customer_name, customer_phone, delivery_address]);
+                    await query(
+                        'INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)',
+                        [customer_name?.trim() || 'Guest', phone, delivery_address?.trim() || '']
+                    );
                 }
             }
 

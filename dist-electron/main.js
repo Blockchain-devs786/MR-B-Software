@@ -95903,32 +95903,21 @@ function setupIpcHandlers() {
           finalPaymentType = "Other";
         }
       }
-      if ((type === "Takeaway" || type === "Delivery") && (customer_phone || customer_name)) {
-        let existingCustomer = null;
-        if (customer_phone) {
-          const existingByPhone = await query("SELECT * FROM customers WHERE phone = ?", [customer_phone]);
-          if (existingByPhone && existingByPhone.length > 0) {
-            existingCustomer = existingByPhone[0];
-          }
-        }
-        if (!existingCustomer && customer_name) {
-          const existingByName = await query("SELECT * FROM customers WHERE name = ?", [customer_name]);
-          if (existingByName && existingByName.length > 0) {
-            existingCustomer = existingByName[0];
-          }
-        }
-        if (existingCustomer) {
+      if ((type === "Takeaway" || type === "Delivery") && customer_phone) {
+        const phone = customer_phone.trim();
+        const existingByPhone = await query("SELECT * FROM customers WHERE phone = ?", [phone]);
+        if (existingByPhone && existingByPhone.length > 0) {
+          const existingCustomer = existingByPhone[0];
           const newName = (customer_name == null ? void 0 : customer_name.trim()) || existingCustomer.name;
-          const newPhone = (customer_phone == null ? void 0 : customer_phone.trim()) || existingCustomer.phone;
           const newAddress = (delivery_address == null ? void 0 : delivery_address.trim()) || existingCustomer.address;
           await query(
-            "UPDATE customers SET name = ?, phone = ?, address = ? WHERE id = ?",
-            [newName, newPhone, newAddress, existingCustomer.id]
+            "UPDATE customers SET name = ?, address = ? WHERE id = ?",
+            [newName, newAddress, existingCustomer.id]
           );
         } else {
           await query(
             "INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)",
-            [(customer_name == null ? void 0 : customer_name.trim()) || "Guest", (customer_phone == null ? void 0 : customer_phone.trim()) || "", (delivery_address == null ? void 0 : delivery_address.trim()) || ""]
+            [(customer_name == null ? void 0 : customer_name.trim()) || "Guest", phone, (delivery_address == null ? void 0 : delivery_address.trim()) || ""]
           );
         }
       }
@@ -95995,11 +95984,19 @@ function setupIpcHandlers() {
         else finalPaymentType = "Other";
       }
       if ((type === "Takeaway" || type === "Delivery") && customer_phone) {
-        const [existingCustomer] = await query("SELECT * FROM customers WHERE phone = ?", [customer_phone]);
-        if (existingCustomer) {
-          await query("UPDATE customers SET name = ?, address = ? WHERE id = ?", [customer_name || existingCustomer.name, delivery_address || existingCustomer.address, existingCustomer.id]);
+        const phone = customer_phone.trim();
+        const existingByPhone = await query("SELECT * FROM customers WHERE phone = ?", [phone]);
+        if (existingByPhone && existingByPhone.length > 0) {
+          const existingCustomer = existingByPhone[0];
+          await query(
+            "UPDATE customers SET name = ?, address = ? WHERE id = ?",
+            [(customer_name == null ? void 0 : customer_name.trim()) || existingCustomer.name, (delivery_address == null ? void 0 : delivery_address.trim()) || existingCustomer.address, existingCustomer.id]
+          );
         } else {
-          await query("INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)", [customer_name, customer_phone, delivery_address]);
+          await query(
+            "INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)",
+            [(customer_name == null ? void 0 : customer_name.trim()) || "Guest", phone, (delivery_address == null ? void 0 : delivery_address.trim()) || ""]
+          );
         }
       }
       await query(
