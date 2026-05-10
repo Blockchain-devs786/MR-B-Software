@@ -12,6 +12,7 @@ dist
 dist-electron
 dist-ssr
 release
+gh_token.txt
 *.local
 
 # Editor directories and files

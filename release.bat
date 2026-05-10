@@ -43,6 +43,13 @@ call npm run build
 :: 7. Publish using electron-builder
 echo.
 echo [+] Publishing via electron-builder...
+if exist gh_token.txt (
+    set /p GH_TOKEN=<gh_token.txt
+) else (
+    echo ERROR: gh_token.txt not found. Create it with your GitHub PAT.
+    pause
+    exit /b 1
+)
 call npx electron-builder --publish always
 
 echo.
