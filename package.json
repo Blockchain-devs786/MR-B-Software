@@ -4,7 +4,7 @@
   "description": "Fast Food Order Management System",
   "author": "Mr B",
   "private": true,
-  "version": "1.1.9",
+  "version": "1.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
