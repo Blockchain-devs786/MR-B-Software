@@ -82,6 +82,7 @@ const api = {
   getCurrentRegistry: () => electron.ipcRenderer.invoke("get-current-registry"),
   getRegistries: (filters) => electron.ipcRenderer.invoke("get-registries", filters),
   getRegistrySummary: (registryId) => electron.ipcRenderer.invoke("get-registry-summary", registryId),
+  getOverallPendingStats: () => electron.ipcRenderer.invoke("get-overall-pending-stats"),
   // Auto-Update
   onUpdateAvailable: (callback) => {
     electron.ipcRenderer.on("update-available", (_event, info) => callback(info));

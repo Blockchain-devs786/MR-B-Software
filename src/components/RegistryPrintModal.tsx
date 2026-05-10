@@ -234,9 +234,10 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
     </div>
 
     <div class="border-dashed">
-        <div class="section-title">Pending Orders:</div>
-        <div class="flex"><span>No of Orders:</span><span>${reportData.pendingOrders}</span></div>
-        <div class="flex"><span>Amount:</span><span>Rs.${reportData.pendingAmount.toFixed(0)}</span></div>
+        <div class="section-title">Overall Pending Orders:</div>
+        <div class="flex"><span>Previous Pending:</span><span>${reportData.overallPendingStats?.previous_pending_count || 0} / Rs.${Number(reportData.overallPendingStats?.previous_pending_amount || 0).toFixed(0)}</span></div>
+        <div class="flex"><span>Today Pending:</span><span>${reportData.overallPendingStats?.today_pending_count || 0} / Rs.${Number(reportData.overallPendingStats?.today_pending_amount || 0).toFixed(0)}</span></div>
+        <div class="flex" style="font-weight: bold; margin-top: 4px;"><span>Total Pending:</span><span>${reportData.overallPendingStats?.total_pending_count || 0} / Rs.${Number(reportData.overallPendingStats?.total_pending_amount || 0).toFixed(0)}</span></div>
     </div>
 
     <div class="footer">
@@ -436,14 +437,18 @@ const RegistryPrintModal = ({ isOpen, onClose, reportData }: RegistryPrintModalP
                         </div>
 
                         <div style={{ borderBottom: '1px dashed #999', paddingBottom: '8px', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: 'bold', marginTop: '8px', marginBottom: '4px' }}>Pending Orders:</div>
+                            <div style={{ fontWeight: 'bold', marginTop: '8px', marginBottom: '4px' }}>Overall Pending Orders:</div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span>No of Orders:</span>
-                                <span>{reportData.pendingOrders}</span>
+                                <span>Previous Pending:</span>
+                                <span>{reportData.overallPendingStats?.previous_pending_count || 0} / Rs.{Number(reportData.overallPendingStats?.previous_pending_amount || 0).toFixed(0)}</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span>Amount:</span>
-                                <span>Rs.{reportData.pendingAmount.toFixed(0)}</span>
+                                <span>Today Pending:</span>
+                                <span>{reportData.overallPendingStats?.today_pending_count || 0} / Rs.{Number(reportData.overallPendingStats?.today_pending_amount || 0).toFixed(0)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px' }}>
+                                <span>Total Pending:</span>
+                                <span>{reportData.overallPendingStats?.total_pending_count || 0} / Rs.{Number(reportData.overallPendingStats?.total_pending_amount || 0).toFixed(0)}</span>
                             </div>
                         </div>
 

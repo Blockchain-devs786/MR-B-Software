@@ -5,7 +5,7 @@ import { sendLicenseRequest, checkLicenseReply } from './emailService';
 
 export function setupIpcHandlers() {
     // ==================== ORDERS ====================
-    ipcMain.handle('get-orders', async (_event, filters?: { registryId?: number | null, startDate?: string, endDate?: string }) => {
+    ipcMain.handle('get-orders', async (_event, filters?: { registryId?: number | null, startDate?: string, endDate?: string, isPending?: boolean }) => {
         try {
             const registryId = filters?.registryId;
             const startDate = filters?.startDate;
@@ -32,6 +32,10 @@ export function setupIpcHandlers() {
             if (startDate && endDate) {
                 whereClauses.push('DATE(o.created_at) >= ? AND DATE(o.created_at) <= ?');
                 params.push(startDate, endDate);
+            }
+
+            if (filters?.isPending) {
+                whereClauses.push("o.status NOT IN ('Cancelled', 'Refunded') AND o.payment_status = 'Pending'");
             }
 
             if (whereClauses.length > 0) {
@@ -1240,5 +1244,27 @@ export function setupIpcHandlers() {
                 }
             };
         } catch (error: any) { return { success: false, error: error.message }; }
+    });
+
+    // ==================== OVERALL PENDING STATS ====================
+    ipcMain.handle('get-overall-pending-stats', async () => {
+        try {
+            const sql = `
+                SELECT 
+                    CAST(COALESCE(SUM(CASE WHEN DATE(created_at) < CURDATE() THEN 1 ELSE 0 END), 0) AS UNSIGNED) as previous_pending_count,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) < CURDATE() THEN total ELSE 0 END), 0) as previous_pending_amount,
+                    CAST(COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS UNSIGNED) as today_pending_count,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total ELSE 0 END), 0) as today_pending_amount,
+                    CAST(COALESCE(SUM(1), 0) AS UNSIGNED) as total_pending_count,
+                    COALESCE(SUM(total), 0) as total_pending_amount
+                FROM orders 
+                WHERE status NOT IN ('Cancelled', 'Refunded') AND payment_status = 'Pending'
+            `;
+            const stats = await query(sql) as any[];
+            return { success: true, data: stats[0] };
+        } catch (error: any) {
+            console.error('Error fetching overall pending stats:', error);
+            return { success: false, error: 'Failed to fetch overall pending stats' };
+        }
     });
 }

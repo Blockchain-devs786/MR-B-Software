@@ -98,6 +98,7 @@ const api = {
   getCurrentRegistry: () => ipcRenderer.invoke('get-current-registry'),
   getRegistries: (filters?: { startDate?: string; endDate?: string }) => ipcRenderer.invoke('get-registries', filters),
   getRegistrySummary: (registryId: number) => ipcRenderer.invoke('get-registry-summary', registryId),
+  getOverallPendingStats: () => ipcRenderer.invoke('get-overall-pending-stats'),
 
   // Auto-Update
   onUpdateAvailable: (callback: (info: any) => void) => {

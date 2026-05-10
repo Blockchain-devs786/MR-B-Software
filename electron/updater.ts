@@ -7,13 +7,12 @@ let win: BrowserWindow | null = null;
 export function initAutoUpdater(mainWindow: BrowserWindow) {
     win = mainWindow;
 
-    // For private repos, set the GitHub token so electron-updater can access releases
+    // For public repos, token is not required for electron-updater
     autoUpdater.setFeedURL({
         provider: 'github',
         owner: 'Blockchain-devs786',
         repo: 'MR-B-Software',
-        private: true,
-        token: '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',
+        private: false,
         releaseType: 'release',
     });
 

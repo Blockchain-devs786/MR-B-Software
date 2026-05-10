@@ -18,7 +18,7 @@ const Reports = () => {
     const [reportData, setReportData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
-    const [activeTab, setActiveTab] = useState<'registry' | 'expense' | 'previous_orders'>('registry');
+    const [activeTab, setActiveTab] = useState<'registry' | 'expense' | 'previous_orders' | 'pending_orders'>('registry');
     const [allExpenses, setAllExpenses] = useState<any[]>([]);
     const [showExpensePrintModal, setShowExpensePrintModal] = useState(false);
     const [showOrderPrintModal, setShowOrderPrintModal] = useState(false);
@@ -37,6 +37,10 @@ const Reports = () => {
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrderId, setPaymentOrderId] = useState<number | null>(null);
+
+    // Pending Orders State
+    const [allPendingOrdersList, setAllPendingOrdersList] = useState<any[]>([]);
+    const [loadingAllPendingOrders, setLoadingAllPendingOrders] = useState(false);
 
     const statusColors: Record<string, string> = {
         Pending: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -58,6 +62,9 @@ const Reports = () => {
             fetchAvailableRegistries(true);
             if (activeTab === 'previous_orders') {
                 fetchPreviousOrders(true);
+            }
+            if (activeTab === 'pending_orders') {
+                fetchAllPendingOrdersList(true);
             }
         }, 5000);
         return () => clearInterval(interval);
@@ -143,6 +150,17 @@ const Reports = () => {
             const reportData = processReportDataInternal(allOrders, allExpensesArr, allRefunds, paymentAccounts,
                 startTime || new Date().toISOString(), endTime || new Date().toISOString(), allOtherSales, allPendingRecovers);
 
+            // Fetch overall pending stats
+            let overallPendingStats = null;
+            try {
+                const pendingRes = await window.api.getOverallPendingStats();
+                if (pendingRes.success) {
+                    overallPendingStats = pendingRes.data;
+                }
+            } catch (err) {
+                console.error("Failed to fetch overall pending stats", err);
+            }
+
             // Add aggregated registry data
             setReportData({
                 ...reportData,
@@ -153,6 +171,14 @@ const Reports = () => {
                     opening_cash: totalOpeningCash,
                     closing_cash: totalClosingCash,
                     closing_cash_after_expense: totalClosingCashAfterExpense
+                },
+                overallPendingStats: overallPendingStats || {
+                    previous_pending_count: 0,
+                    previous_pending_amount: 0,
+                    today_pending_count: 0,
+                    today_pending_amount: 0,
+                    total_pending_count: 0,
+                    total_pending_amount: 0
                 }
             });
         } catch (error) {
@@ -246,9 +272,29 @@ const Reports = () => {
         }
     };
 
+    const fetchAllPendingOrdersList = async (isPolling = false) => {
+        if (!window.api) return;
+        if (!isPolling) setLoadingAllPendingOrders(true);
+        try {
+            const res = await window.api.getOrders({ isPending: true });
+            if (res.success) {
+                setAllPendingOrdersList(res.data || []);
+            } else {
+                if (!isPolling) showToast('Failed to load pending orders', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching pending orders:', error);
+            if (!isPolling) showToast('Failed to load pending orders', 'error');
+        } finally {
+            if (!isPolling) setLoadingAllPendingOrders(false);
+        }
+    };
+
     useEffect(() => {
         if (activeTab === 'previous_orders') {
             fetchPreviousOrders();
+        } else if (activeTab === 'pending_orders') {
+            fetchAllPendingOrdersList();
         }
     }, [activeTab, fromDate, toDate, selectedRegistryId]);
 
@@ -549,6 +595,16 @@ const Reports = () => {
                 >
                     <ShoppingBag size={18} />
                     Previous Orders
+                </button>
+                <button
+                    onClick={() => setActiveTab('pending_orders')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${activeTab === 'pending_orders'
+                        ? 'bg-orange-500 text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                >
+                    <ShoppingBag size={18} />
+                    Pending Orders
                 </button>
             </div>
 
@@ -865,17 +921,27 @@ const Reports = () => {
                                 </div>
                             </div>
 
-                            {/* Pending Orders */}
+                            {/* Overall Pending Orders */}
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                                <h3 className="text-xl font-bold mb-4">Pending Orders</h3>
-                                <div className="grid grid-cols-2 gap-4">
+                                <h3 className="text-xl font-bold mb-4">Overall Pending Orders</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     <div>
-                                        <div className="text-sm text-gray-500 mb-1">No of Orders</div>
-                                        <div className="text-2xl font-bold text-orange-600">{reportData.pendingOrders}</div>
+                                        <div className="text-sm text-gray-500 mb-1">Previous Pending Orders</div>
+                                        <div className="text-xl font-bold text-orange-600">
+                                            {reportData.overallPendingStats?.previous_pending_count || 0} / Rs. {Number(reportData.overallPendingStats?.previous_pending_amount || 0).toFixed(0)}
+                                        </div>
                                     </div>
                                     <div>
-                                        <div className="text-sm text-gray-500 mb-1">Amount</div>
-                                        <div className="text-2xl font-bold text-orange-600">Rs. {reportData.pendingAmount.toFixed(0)}</div>
+                                        <div className="text-sm text-gray-500 mb-1">Today Pending Orders</div>
+                                        <div className="text-xl font-bold text-orange-600">
+                                            {reportData.overallPendingStats?.today_pending_count || 0} / Rs. {Number(reportData.overallPendingStats?.today_pending_amount || 0).toFixed(0)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-sm text-gray-500 mb-1">Total Pending Orders</div>
+                                        <div className="text-xl font-bold text-orange-600">
+                                            {reportData.overallPendingStats?.total_pending_count || 0} / Rs. {Number(reportData.overallPendingStats?.total_pending_amount || 0).toFixed(0)}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1069,9 +1135,20 @@ const Reports = () => {
                                                     <td className="px-4 py-3 text-gray-600">{new Date(order.created_at).toLocaleString('en-PK')}</td>
                                                     <td className="px-4 py-3 text-gray-900">{order.type}</td>
                                                     <td className="px-4 py-3">
-                                                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${statusColors[order.status] || 'bg-gray-100 text-gray-600'}`}>
-                                                            {order.status}
-                                                        </span>
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] uppercase text-gray-400 font-semibold w-16">Kitchen:</span>
+                                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border max-w-fit ${statusColors[order.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                    {order.status}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] uppercase text-gray-400 font-semibold w-16">Payment:</span>
+                                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border max-w-fit ${order.payment_status === 'Paid' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                                                    {order.payment_status}
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-right font-bold text-gray-900">Rs. {Number(order.total).toFixed(0)}</td>
                                                 </tr>
@@ -1085,6 +1162,77 @@ const Reports = () => {
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
                             <ShoppingBag size={48} className="text-gray-300 mx-auto mb-4" />
                             <p className="text-gray-500">No orders found for the selected date range.</p>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* ==================== ALL PENDING ORDERS TAB ==================== */}
+            {activeTab === 'pending_orders' && (
+                <>
+                    {loadingAllPendingOrders ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
+                            <p className="text-gray-500">Loading pending orders...</p>
+                        </div>
+                    ) : allPendingOrdersList.length > 0 ? (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold">All Pending Orders</h3>
+                                <div className="text-sm font-medium text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
+                                    Total Amount: Rs. {allPendingOrdersList.reduce((sum, o) => sum + Number(o.total || 0), 0).toFixed(0)}
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-50 border-b border-gray-100">
+                                        <tr>
+                                            <th className="px-4 py-3 font-medium text-gray-500 w-24">Order ID</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Date/Time</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Type</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500">Status</th>
+                                            <th className="px-4 py-3 font-medium text-gray-500 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {allPendingOrdersList.map((order: any) => {
+                                            return (
+                                                <tr
+                                                    key={order.id}
+                                                    onClick={() => setSelectedOrder(order)}
+                                                    className="border-b border-gray-100 last:border-0 hover:bg-orange-50 cursor-pointer transition-colors"
+                                                >
+                                                    <td className="px-4 py-3 font-bold text-gray-900">#{String(order.id).padStart(3, '0')}</td>
+                                                    <td className="px-4 py-3 text-gray-600">{new Date(order.created_at).toLocaleString('en-PK')}</td>
+                                                    <td className="px-4 py-3 text-gray-900">{order.type}</td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] uppercase text-gray-400 font-semibold w-16">Kitchen:</span>
+                                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border max-w-fit ${statusColors[order.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                    {order.status}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] uppercase text-gray-400 font-semibold w-16">Payment:</span>
+                                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border max-w-fit ${order.payment_status === 'Paid' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                                                    {order.payment_status}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-gray-900">Rs. {Number(order.total).toFixed(0)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                            <ShoppingBag size={48} className="text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500">No pending orders found.</p>
                         </div>
                     )}
                 </>
@@ -1188,7 +1336,7 @@ const Reports = () => {
                     setShowPaymentModal(false);
                     setPaymentOrderId(null);
                 }}
-                order={previousOrders.find(o => o.id === paymentOrderId)}
+                order={previousOrders.find(o => o.id === paymentOrderId) || allPendingOrdersList.find(o => o.id === paymentOrderId)}
                 onPaymentComplete={async (orderId: number, status: string, payments: any[]) => {
                     if (!window.api) return;
                     let paymentMethodStr = 'IN DRAW';
@@ -1197,21 +1345,19 @@ const Reports = () => {
                     
                     const res = await window.api.updatePaymentStatus(orderId, status, paymentMethodStr, payments.length === 1 ? payments[0].type : 'Split', payments);
                     if (res.success) {
-                        const ord = previousOrders.find(o => o.id === orderId);
-                        if (ord && ord.status !== 'Completed' && ord.status !== 'Refunded' && ord.status !== 'Cancelled') {
-                            await window.api.updateOrderStatus(orderId, 'Completed');
-                        }
                         showToast('Payment collected successfully');
                         setShowPaymentModal(false);
                         setPaymentOrderId(null);
                         // Update selectedOrder so button hides immediately
                         setSelectedOrder((prev: any) => prev && prev.id === orderId
-                            ? { ...prev, status: 'Completed', payment_status: 'Paid' }
+                            ? { ...prev, payment_status: 'Paid' }
                             : prev
                         );
                         // Refresh data
                         if (activeTab === 'previous_orders') {
                             fetchPreviousOrders();
+                        } else if (activeTab === 'pending_orders') {
+                            fetchAllPendingOrdersList();
                         } else {
                             fetchAvailableRegistries();
                         }

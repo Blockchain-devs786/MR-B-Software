@@ -18342,21 +18342,27 @@ let CloseStatement$2 = class CloseStatement {
 };
 var close_statement$1 = CloseStatement$2;
 var field_flags = {};
-field_flags.NOT_NULL = 1;
-field_flags.PRI_KEY = 2;
-field_flags.UNIQUE_KEY = 4;
-field_flags.MULTIPLE_KEY = 8;
-field_flags.BLOB = 16;
-field_flags.UNSIGNED = 32;
-field_flags.ZEROFILL = 64;
-field_flags.BINARY = 128;
-field_flags.ENUM = 256;
-field_flags.AUTO_INCREMENT = 512;
-field_flags.TIMESTAMP = 1024;
-field_flags.SET = 2048;
-field_flags.NO_DEFAULT_VALUE = 4096;
-field_flags.ON_UPDATE_NOW = 8192;
-field_flags.NUM = 32768;
+var hasRequiredField_flags;
+function requireField_flags() {
+  if (hasRequiredField_flags) return field_flags;
+  hasRequiredField_flags = 1;
+  field_flags.NOT_NULL = 1;
+  field_flags.PRI_KEY = 2;
+  field_flags.UNIQUE_KEY = 4;
+  field_flags.MULTIPLE_KEY = 8;
+  field_flags.BLOB = 16;
+  field_flags.UNSIGNED = 32;
+  field_flags.ZEROFILL = 64;
+  field_flags.BINARY = 128;
+  field_flags.ENUM = 256;
+  field_flags.AUTO_INCREMENT = 512;
+  field_flags.TIMESTAMP = 1024;
+  field_flags.SET = 2048;
+  field_flags.NO_DEFAULT_VALUE = 4096;
+  field_flags.ON_UPDATE_NOW = 8192;
+  field_flags.NUM = 32768;
+  return field_flags;
+}
 const Packet$b = packet;
 const StringParser$2 = string;
 const CharsetToEncoding$7 = requireCharset_encodings();
@@ -18420,7 +18426,7 @@ class ColumnDefinition {
     for (const t2 in Types2) {
       typeNames2[Types2[t2]] = t2;
     }
-    const fiedFlags = field_flags;
+    const fiedFlags = requireField_flags();
     const flagNames2 = [];
     const inspectFlags = this.flags;
     for (const f in fiedFlags) {
@@ -21475,7 +21481,7 @@ let CloseStatement$1 = class CloseStatement2 extends Command$7 {
   }
 };
 var close_statement = CloseStatement$1;
-const FieldFlags$1 = field_flags;
+const FieldFlags$1 = requireField_flags();
 const Charsets$2 = requireCharsets();
 const Types$2 = requireTypes();
 const helpers$2 = helpers$5;
@@ -21664,7 +21670,7 @@ function getBinaryParser$2(fields2, options, config2) {
   return parserCache.getParser("binary", fields2, options, config2, compile$3);
 }
 var binary_parser = getBinaryParser$2;
-const FieldFlags = field_flags;
+const FieldFlags = requireField_flags();
 const Charsets$1 = requireCharsets();
 const Types$1 = requireTypes();
 const helpers$1 = helpers$5;
@@ -95724,6 +95730,9 @@ function setupIpcHandlers() {
         whereClauses.push("DATE(o.created_at) >= ? AND DATE(o.created_at) <= ?");
         params.push(startDate, endDate);
       }
+      if (filters == null ? void 0 : filters.isPending) {
+        whereClauses.push("o.status NOT IN ('Cancelled', 'Refunded') AND o.payment_status = 'Pending'");
+      }
       if (whereClauses.length > 0) {
         sql += " WHERE " + whereClauses.join(" AND ");
       }
@@ -96808,6 +96817,26 @@ function setupIpcHandlers() {
       return { success: false, error: error2.message };
     }
   });
+  ipcMain.handle("get-overall-pending-stats", async () => {
+    try {
+      const sql = `
+                SELECT 
+                    CAST(COALESCE(SUM(CASE WHEN DATE(created_at) < CURDATE() THEN 1 ELSE 0 END), 0) AS UNSIGNED) as previous_pending_count,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) < CURDATE() THEN total ELSE 0 END), 0) as previous_pending_amount,
+                    CAST(COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS UNSIGNED) as today_pending_count,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total ELSE 0 END), 0) as today_pending_amount,
+                    CAST(COALESCE(SUM(1), 0) AS UNSIGNED) as total_pending_count,
+                    COALESCE(SUM(total), 0) as total_pending_amount
+                FROM orders 
+                WHERE status NOT IN ('Cancelled', 'Refunded') AND payment_status = 'Pending'
+            `;
+      const stats = await query(sql);
+      return { success: true, data: stats[0] };
+    } catch (error2) {
+      console.error("Error fetching overall pending stats:", error2);
+      return { success: false, error: "Failed to fetch overall pending stats" };
+    }
+  });
 }
 const { autoUpdater } = pkg;
 let win$1 = null;
@@ -96817,8 +96846,7 @@ function initAutoUpdater(mainWindow) {
     provider: "github",
     owner: "Blockchain-devs786",
     repo: "MR-B-Software",
-    private: true,
-    token: "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",
+    private: false,
     releaseType: "release"
   });
   autoUpdater.autoDownload = true;

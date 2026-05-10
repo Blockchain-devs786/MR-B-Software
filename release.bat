@@ -43,7 +43,6 @@ call npm run build
 :: 7. Publish using electron-builder
 echo.
 echo [+] Publishing via electron-builder...
-set GH_TOKEN=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
 call npx electron-builder --publish always
 
 echo.

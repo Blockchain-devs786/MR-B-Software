@@ -329,10 +329,6 @@ const Orders = () => {
             splitPaymentsInput
         );
         if (res.success) {
-            const ord = orders.find(o => o.id === orderId);
-            if (ord && ord.status !== 'Completed' && ord.status !== 'Refunded' && ord.status !== 'Cancelled') {
-                await window.api.updateOrderStatus(orderId, 'Completed');
-            }
             showToast('Payment collected successfully');
             setShowPaymentModal(false);
             setPaymentOrderId(null);
