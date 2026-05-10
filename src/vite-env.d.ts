@@ -145,6 +145,7 @@ interface Window {
         updateOrder: (orderId: number, orderData: any) => Promise<{ success: boolean; orderId?: number; token?: number; previousItems?: { name: string; quantity: number; note: string }[]; error?: string }>;
         cancelOrder: (orderId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
         getCustomers: (searchQuery?: string) => Promise<{ success: boolean; data: Customer[]; error?: string }>;
+        getOverallPendingStats: () => Promise<{ success: boolean; data?: { previous_pending_orders: number; previous_pending_amount: number; today_pending_orders: number; today_pending_amount: number; total_pending_orders: number; total_pending_amount: number }; error?: string }>;
 
         // Tables
         getTables: () => Promise<{ success: boolean; data: TableInfo[]; error?: string }>;
